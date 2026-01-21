@@ -121,6 +121,7 @@
         #health-bar { background-color: #e74c3c; } 
         #hunger-bar { background-color: #e67e22; } 
         #thirst-bar { background-color: #3498db; } 
+        #stamina-bar { background-color: #9b59b6; }
 
         #interaction-msg {
             position: absolute;
@@ -136,7 +137,8 @@
             border-radius: 4px;
         }
         /* HUD de status — oculto até iniciar o jogo */
-        #status-hud { display: none; flex-direction: column; align-items: flex-start; }
+        #top-hud { position: absolute; top: 20px; left: 20px; pointer-events: none; display: none; flex-direction: column; align-items: flex-start; z-index: 11; }
+        #status-hud { position: absolute; bottom: 20px; left: 20px; pointer-events: none; display: none; flex-direction: column; align-items: flex-start; z-index: 10; }
     </style>
     
     <script type="importmap">
@@ -178,11 +180,18 @@
     <div id="ui-layer">
         <div id="interaction-msg">Pressione 'E' para pegar</div>
 
-        <div id="status-hud">
+        <div id="top-hud">
             <div class="stat-box">
                 <div class="stat-label">VIDA</div>
                 <div class="bar-container"><div id="health-bar" class="bar-fill" style="width: 100%;"></div></div>
             </div>
+            <div class="stat-box">
+                <div class="stat-label">STAMINA</div>
+                <div class="bar-container"><div id="stamina-bar" class="bar-fill" style="width: 100%;"></div></div>
+            </div>
+        </div>
+
+        <div id="status-hud">
             <div class="stat-box">
                 <div class="stat-label">FOME</div>
                 <div class="bar-container"><div id="hunger-bar" class="bar-fill" style="width: 100%;"></div></div>
@@ -222,6 +231,25 @@
         let health = 100;
         let hunger = 100;
         let thirst = 100;
+        // Stamina / Sprint
+        let stamina = 100;
+        const MAX_STAMINA = 100;
+        const STAMINA_DRAIN = 20; // units per second while sprinting
+        const STAMINA_REGEN = 12; // units per second when not sprinting
+        const WALK_SPEED = 100.0; // normal walking speed
+        const SPRINT_SPEED = 220.0; // previous MOVE_SPEED becomes sprint speed
+        const WALK_SPEED_EXHAUSTED = 60.0; // slowed when stamina is 0
+        let isSprinting = false;
+        // Slow decay (hunger/thirst slower) for limited day/night cycles
+        let slowDecayActive = false;
+        let slowDecayCyclesLeft = 0; // number of full day/night cycles remaining
+        let SLOW_DECAY_FACTOR = 0.5; // multiplier applied to depletion rates while active (0.5 => half rate)
+        let previousTimeOfDay = timeOfDay;
+        function enableSlowDecay(cycles = 3, factor = 0.5) {
+            slowDecayActive = true;
+            slowDecayCyclesLeft = cycles;
+            SLOW_DECAY_FACTOR = factor;
+        }
         let lastTime = performance.now();
         let gameStarted = false;
         
@@ -480,7 +508,11 @@
             controls.lock();
             // Mostrar HUD de status quando o jogo iniciar
             const hud = document.getElementById('status-hud');
+            const topHud = document.getElementById('top-hud');
             if (hud) hud.style.display = 'flex';
+            if (topHud) topHud.style.display = 'flex';
+            // Ativa redução de taxa de fome/sede por até 3 ciclos (dias+noites)
+            enableSlowDecay(3, 0.5);
             gameStarted = true;
         }
 
@@ -771,6 +803,8 @@
             document.getElementById('health-bar').style.width = health + '%';
             document.getElementById('hunger-bar').style.width = hunger + '%';
             document.getElementById('thirst-bar').style.width = thirst + '%';
+            const sBar = document.getElementById('stamina-bar');
+            if (sBar) sBar.style.width = Math.max(0, Math.min(100, stamina)) + '%';
         }
 
         // Variáveis de Física
@@ -805,15 +839,26 @@
             lastTime = time;
 
             updateDayNight(delta);
+            // Detect day/night cycle wrap (completed a full cycle) and decrement slow-decay timer
+            if (previousTimeOfDay > timeOfDay) {
+                if (slowDecayActive) {
+                    slowDecayCyclesLeft -= 1;
+                    if (slowDecayCyclesLeft <= 0) {
+                        slowDecayActive = false;
+                    }
+                }
+            }
+            previousTimeOfDay = timeOfDay;
 
             // Só processa lógica se não estiver pausado e não estiver no inventário
             // Mas hunger/thirst continuam caindo? Em jogos survival, geralmente sim.
             // Aqui vamos pausar o movimento, mas manter o status caindo.
             
             if (!isInventoryOpen && controls.isLocked) {
-                // Diminuição de status
-                hunger -= 1.0 * delta;
-                thirst -= 1.5 * delta;
+                // Diminuição de status (aplica multiplicador se slowDecay estiver ativo)
+                const decayMultiplier = slowDecayActive ? SLOW_DECAY_FACTOR : 1.0;
+                hunger -= 1.0 * decayMultiplier * delta;
+                thirst -= 1.5 * decayMultiplier * delta;
 
                 if (hunger <= 0 || thirst <= 0) health -= 3 * delta;
                 if (health <= 0) {
@@ -833,12 +878,33 @@
                 direction.x = Number(!!keyState['KeyD'] || !!keyState['ArrowRight']) - Number(!!keyState['KeyA'] || !!keyState['ArrowLeft']);
                 direction.normalize();
 
-                // Movimentação mais lenta
-                const MOVE_SPEED = 220.0;
+                // Movimentação: walking vs sprint
+                const moving = (keyState['KeyW'] || keyState['KeyS'] || keyState['ArrowUp'] || keyState['ArrowDown'] || keyState['KeyA'] || keyState['KeyD'] || keyState['ArrowLeft'] || keyState['ArrowRight']);
+                const wantSprint = (keyState['ShiftLeft'] || keyState['ShiftRight']);
+
+                // Decide se está correndo: tem stamina e está tentando sprintar e movendo
+                isSprinting = wantSprint && stamina > 0 && moving;
+
+                let currentSpeed = WALK_SPEED;
+                if (isSprinting) currentSpeed = SPRINT_SPEED;
+                else if (stamina <= 0) currentSpeed = WALK_SPEED_EXHAUSTED;
+
                 if (keyState['KeyW'] || keyState['KeyS'] || keyState['ArrowUp'] || keyState['ArrowDown']) 
-                    velocity.z -= direction.z * MOVE_SPEED * delta;
+                    velocity.z -= direction.z * currentSpeed * delta;
                 if (keyState['KeyD'] || keyState['KeyA'] || keyState['ArrowRight'] || keyState['ArrowLeft']) 
-                    velocity.x -= direction.x * MOVE_SPEED * delta;
+                    velocity.x -= direction.x * currentSpeed * delta;
+
+                // Stamina drain / regen
+                if (isSprinting) {
+                    stamina -= STAMINA_DRAIN * delta;
+                    if (stamina < 0) stamina = 0;
+                } else {
+                    // Regenerates over time when not sprinting
+                    stamina += STAMINA_REGEN * delta;
+                    if (stamina > MAX_STAMINA) stamina = MAX_STAMINA;
+                }
+                // Atualiza HUD para refletir stamina atual
+                updateHUD();
 
                 // Pulo
                 if (keyState['Space'] && canJump) {
