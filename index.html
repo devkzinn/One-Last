@@ -455,25 +455,52 @@
         }
 
         function spawnItem(type, x, z, y) {
-            let geometry, material, color;
             if (type === 'food') { 
-                geometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-                color = 0xFF4444;
-            } else if (type === 'water') { 
-                geometry = new THREE.SphereGeometry(0.4, 8, 8);
-                color = 0x4444FF;
+                const geometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                const material = new THREE.MeshStandardMaterial({ color: 0xFF4444, roughness: 0.2 });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(x, y + 0.8, z);
+                mesh.castShadow = true;
+                mesh.userData = { type: type, active: true, baseY: mesh.position.y, phase: Math.random() * Math.PI * 2 };
+                scene.add(mesh);
+                itemsInWorld.push(mesh);
+            } else if (type === 'water') {
+                const geometry = new THREE.SphereGeometry(0.4, 8, 8);
+                const material = new THREE.MeshStandardMaterial({ color: 0x4444FF, roughness: 0.2 });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(x, y + 0.8, z);
+                mesh.castShadow = true;
+                mesh.userData = { type: type, active: true, baseY: mesh.position.y, phase: Math.random() * Math.PI * 2 };
+                scene.add(mesh);
+                itemsInWorld.push(mesh);
             } else if (type === 'sword') {
-                geometry = new THREE.BoxGeometry(0.15, 1.1, 0.15);
-                color = 0xcccccc;
+                // Cria uma malha de espada com lâmina texturizada
+                const bladeGeo = new THREE.BoxGeometry(0.15, 0.9, 0.12);
+                const bladeTex = createSwordTexture(64, 256);
+                const bladeMat = new THREE.MeshStandardMaterial({ map: bladeTex, metalness: 0.9, roughness: 0.25 });
+                const blade = new THREE.Mesh(bladeGeo, bladeMat);
+                blade.position.y = 0.45;
+
+                const handleGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.28, 8);
+                const handleMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B });
+                const handle = new THREE.Mesh(handleGeo, handleMat);
+                handle.position.y = -0.12;
+
+                const guardGeo = new THREE.BoxGeometry(0.18, 0.04, 0.18);
+                const guardMat = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
+                const guard = new THREE.Mesh(guardGeo, guardMat);
+                guard.position.y = 0.12;
+
+                const group = new THREE.Group();
+                group.add(blade);
+                group.add(handle);
+                group.add(guard);
+                group.position.set(x, y + 0.8, z);
+                group.castShadow = true;
+                group.userData = { type: type, active: true, baseY: group.position.y, phase: Math.random() * Math.PI * 2 };
+                scene.add(group);
+                itemsInWorld.push(group);
             }
-            material = new THREE.MeshStandardMaterial({ color: color, roughness: 0.2 });
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.set(x, y + 0.8, z);
-            mesh.castShadow = true;
-            // guarda a posição base para animação vertical estável
-            mesh.userData = { type: type, active: true, baseY: mesh.position.y, phase: Math.random() * Math.PI * 2 };
-            scene.add(mesh);
-            itemsInWorld.push(mesh);
         }
 
         // Popular
@@ -542,10 +569,21 @@
         // Função para iniciar o jogo (mostra o canvas e inicia o loop)
         function startGame() {
             if (gameStarted) return;
+            console.log('startGame: inicializando...');
             renderer.domElement.style.display = '';
-            // Inicia loop de animação e travamento de ponteiro
-            animate();
-            controls.lock();
+            try {
+                // Inicia loop de animação e travamento de ponteiro
+                animate();
+            } catch (err) {
+                console.error('Erro ao iniciar animate():', err);
+                showStartupError('Erro ao iniciar o loop de jogo. Veja o console.');
+                return;
+            }
+            try {
+                controls.lock();
+            } catch (err) {
+                console.warn('Não foi possível travar o pointer diretamente:', err);
+            }
             // Mostrar HUD de status quando o jogo iniciar
             const hud = document.getElementById('status-hud');
             const topHud = document.getElementById('top-hud');
@@ -554,6 +592,18 @@
             // Ativa redução de taxa de fome/sede por até 3 ciclos (dias+noites)
             enableSlowDecay(3, 0.5);
             gameStarted = true;
+            console.log('startGame: pronto');
+        }
+
+        function showStartupError(msg) {
+            let e = document.getElementById('startup-error');
+            if (!e) {
+                e = document.createElement('div');
+                e.id = 'startup-error';
+                e.style = 'position:fixed;left:10px;top:10px;z-index:9999;background:#800;color:#fff;padding:10px;border-radius:6px;font-family:Segoe UI, Tahoma, sans-serif;';
+                document.body.appendChild(e);
+            }
+            e.innerText = msg;
         }
 
         // Modal de tutorial
@@ -654,10 +704,22 @@
                 else if (item.type === 'dirt') iconClass = '';
                 else if (item.type === 'stone') iconClass = '';
                 else if (item.type === 'sand') iconClass = '';
-                slot.innerHTML = `
-                    <div class="${iconClass}" style="width:30px;height:30px;background:${item.type==='dirt'?'#8B5A2B':item.type==='stone'?'#888':'#EED28A'};border-radius:4px;margin-bottom:5px;"></div>
-                    <span class="item-count">${item.name}</span>
-                `;
+                // Se for espada, tenta gerar um ícone via canvas/textura
+                if (item.type === 'sword') {
+                    const canvas = createSwordTextureCanvas(64, 128);
+                    const dataUrl = canvas.toDataURL();
+                    slot.innerHTML = `
+                        <div style="width:30px;height:30px;border-radius:4px;margin-bottom:5px;background:#000;display:flex;align-items:center;justify-content:center;">
+                            <img src="${dataUrl}" style="width:26px;height:26px;object-fit:cover;border-radius:3px;" />
+                        </div>
+                        <span class="item-count">${item.name}</span>
+                    `;
+                } else {
+                    slot.innerHTML = `
+                        <div class="${iconClass}" style="width:30px;height:30px;background:${item.type==='dirt'?'#8B5A2B':item.type==='stone'?'#888':'#EED28A'};border-radius:4px;margin-bottom:5px;"></div>
+                        <span class="item-count">${item.name}</span>
+                    `;
+                }
                 slot.onclick = () => useItem(index);
                 grid.appendChild(slot);
             });
@@ -690,6 +752,7 @@
             }
             updateHUD();
             renderInventory();
+        }
                 // Colocação de bloco
                 function placeBlock(type) {
                     // Posição à frente do jogador
@@ -776,12 +839,92 @@
                     renderInventory();
                     alert('Item criado!');
                 };
+        // Gera o canvas com textura procedural para a lâmina (retorna o canvas)
+        function createSwordTextureCanvas(width = 128, height = 512) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            // Fundo metálico
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#e9eef6');
+            grad.addColorStop(0.4, '#cfd8e7');
+            grad.addColorStop(0.6, '#bfc8dd');
+            grad.addColorStop(1, '#e6eef8');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            // Riscar verticalmente para simular acabamento escovado
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < width; x += 2) {
+                ctx.beginPath();
+                const jitter = (Math.random() - 0.5) * 0.8;
+                ctx.moveTo(x + jitter, 0);
+                ctx.lineTo(x + jitter, height);
+                ctx.stroke();
+            }
+
+            // Adiciona algumas marcas/arranhões
+            ctx.strokeStyle = 'rgba(60,60,60,0.12)';
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < 6; i++) {
+                ctx.beginPath();
+                const y = Math.random() * height;
+                ctx.moveTo(5 + Math.random() * 20, y);
+                ctx.lineTo(width - (5 + Math.random() * 20), y + (Math.random() - 0.5) * 12);
+                ctx.stroke();
+            }
+
+            // Pequeno brilho central
+            const shineGrad = ctx.createLinearGradient(width / 2 - 6, 0, width / 2 + 6, 0);
+            shineGrad.addColorStop(0, 'rgba(255,255,255,0)');
+            shineGrad.addColorStop(0.5, 'rgba(255,255,255,0.25)');
+            shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(width / 2 - 6, 0, 12, height);
+
+            return canvas;
+        }
+
+        // Cria um THREE.CanvasTexture a partir do canvas e reaplica se necessário
+        function createSwordTexture(width = 128, height = 512) {
+            const canvas = createSwordTextureCanvas(width, height);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(1, 1);
+            tex.needsUpdate = true;
+            // Reaplica se já estiver equipada
+            applySwordTextureToExistingMesh(tex);
+            return tex;
+        }
+
+        // Reaplica a textura na lâmina caso a espada já esteja equipada
+        function applySwordTextureToExistingMesh(tex) {
+            if (!swordMesh) return;
+            swordMesh.traverse(child => {
+                if (child.isMesh && child.geometry && child.material) {
+                    const p = child.geometry.parameters || {};
+                    if (p.height && Math.abs(p.height - 0.8) < 0.4) {
+                        child.material.map = tex;
+                        child.material.metalness = 0.9;
+                        child.material.roughness = 0.25;
+                        child.material.needsUpdate = true;
+                    }
+                }
+            });
+        }
+
         // Exibe a espada na mão do jogador (câmera)
         function showSwordInHand() {
-            if (swordMesh) return;
+            // Se já existe a malha da espada, apenas gere e aplique a textura novamente
+            if (swordMesh) { createSwordTexture(64, 512); return; }
             // Lâmina
             const bladeGeo = new THREE.BoxGeometry(0.12, 0.8, 0.12);
-            const bladeMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+            const bladeTexture = createSwordTexture(64, 512);
+            const bladeMat = new THREE.MeshStandardMaterial({ map: bladeTexture, metalness: 0.9, roughness: 0.25 });
             const blade = new THREE.Mesh(bladeGeo, bladeMat);
             blade.position.y = 0.32;
             // Cabo
@@ -812,7 +955,6 @@
                 camera.remove(swordMesh);
                 swordMesh = null;
             }
-        }
         }
 
         // --- LÓGICA DE JOGO ---
