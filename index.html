@@ -117,6 +117,11 @@
         .stat-label { color: white; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
         .bar-container { width: 100%; height: 20px; background-color: #333; border-radius: 4px; overflow: hidden; }
         .bar-fill { height: 100%; width: 100%; transition: width 0.2s; }
+        /* Barras de vida dos inimigos (fina, nome em cima) */
+        .enemy-health-bar { position: absolute; pointer-events: none; display: none; transform: translate(-50%, -110%); z-index: 30; text-align: center; }
+        .enemy-name { color: white; font-size: 12px; font-weight: 300; margin-bottom: 3px; text-shadow: 0 1px 2px rgba(0,0,0,0.7); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .enemy-health-outer { width: 80px; height: 8px; background: rgba(0,0,0,0.45); border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); }
+        .enemy-health-inner { height: 100%; width: 100%; transition: width 0.12s linear; border-radius: 3px; }
         
         #health-bar { background-color: #e74c3c; } 
         #hunger-bar { background-color: #e67e22; } 
@@ -364,23 +369,58 @@
 
         // --- INIMIGOS ---
         const enemies = [];
-        function spawnEnemy(x, z, y) {
-            const enemyGeo = new THREE.BoxGeometry(1, 2, 1);
-            const enemyMat = new THREE.MeshStandardMaterial({ color: 0x990000, roughness: 0.5 });
+        function spawnEnemy(x, z, y, kind) {
+            // Monstros: 'vampiro' | 'Lobisomen' | 'zombie'
+            const kinds = ['vampiro', 'Lobisomen', 'zombie'];
+            const k = kind || kinds[Math.floor(Math.random() * kinds.length)];
+
+            let enemyGeo, enemyMat, color = 0x990000, speed = 3.5, damage = 12, maxHealth = 100, scaleY = 2;
+            if (k === 'vampiro') {
+                color = 0x8e44ad; // purple-ish
+                speed = 4.5; // rápido
+                damage = 18; // razoável
+                maxHealth = 100;
+                enemyGeo = new THREE.BoxGeometry(0.9, 1.8, 0.9);
+            } else if (k === 'Lobisomen') {
+                color = 0x333333; // dark
+                speed = 6.0; // muito rápido
+                damage = 8; // fraco
+                maxHealth = 220;
+                enemyGeo = new THREE.BoxGeometry(1.0, 1.9, 1.0);
+            } else { // zombie
+                color = 0x2e8b57; // green-ish
+                speed = 1.0; // muito lento
+                damage = 36; // muito forte
+                maxHealth = 80;
+                enemyGeo = new THREE.BoxGeometry(1.1, 2.4, 1.1);
+            }
+
+            enemyMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.6 });
             const enemy = new THREE.Mesh(enemyGeo, enemyMat);
-            enemy.position.set(x, y + 1, z);
+            enemy.position.set(x, y + (scaleY/2 || 1), z);
             enemy.castShadow = true;
-            // Vida máxima e atual
-            enemy.userData = { alive: true, damage: 12, maxHealth: 100, health: 100, healthBarId: null };
+            // Vida máxima e atual + speed e tipo
+            enemy.userData = { kind: k, alive: true, damage: damage, maxHealth: maxHealth, health: maxHealth, speed: speed, healthBarId: null };
             scene.add(enemy);
             enemies.push(enemy);
-            // Criar barra de vida HTML
+            // Criar barra de vida HTML mais sofisticada (nome + barra fina)
             const bar = document.createElement('div');
             bar.className = 'enemy-health-bar';
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'enemy-name';
+            nameDiv.innerText = (k === 'vampiro') ? 'Vampiro' : (k === 'Lobisomen') ? 'Lobisomem' : 'Zumbi';
+            bar.appendChild(nameDiv);
+            const outer = document.createElement('div');
+            outer.className = 'enemy-health-outer';
             const inner = document.createElement('div');
-            inner.className = 'enemy-health-bar-inner';
+            inner.className = 'enemy-health-inner';
+            // color inner by type for quick feedback
+            if (k === 'vampiro') inner.style.background = '#b368d6';
+            else if (k === 'Lobisomen') inner.style.background = '#999999';
+            else inner.style.background = '#66aa66';
             inner.style.width = '100%';
-            bar.appendChild(inner);
+            outer.appendChild(inner);
+            bar.appendChild(outer);
             document.getElementById('enemies-health-bars').appendChild(bar);
             enemy.userData.healthBarId = bar;
         }
@@ -825,13 +865,31 @@
                             const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
                             const y = (-pos.y * 0.5 + 0.5) * window.innerHeight;
                             const bar = enemy.userData.healthBarId;
-                            bar.style.left = (x - 30) + 'px';
-                            bar.style.top = (y - 20) + 'px';
-                            // Atualiza vida
-                            const inner = bar.firstChild;
-                            const percent = Math.max(0, enemy.userData.health / enemy.userData.maxHealth);
-                            inner.style.width = (percent * 100) + '%';
-                            bar.style.display = (enemy.userData.alive && percent > 0) ? 'block' : 'none';
+                            // centralizamos o elemento usando translate(-50%, -110%), então posicionamos no ponto projetado
+                            bar.style.left = x + 'px';
+                            bar.style.top = (y - 12) + 'px';
+                                // Atualiza vida e visibilidade somente se estiver perto do jogador
+                                const inner = bar.querySelector('.enemy-health-inner');
+                                const percent = Math.max(0, enemy.userData.health / enemy.userData.maxHealth);
+                                if (inner) inner.style.width = (percent * 100) + '%';
+                                const playerPos = controls.getObject().position;
+                                const ENEMY_BAR_SHOW_DISTANCE = 20; // ajustar conforme desejado
+                                const distToPlayer = enemy.position.distanceTo(playerPos);
+                                // Verifica se o jogador está olhando para o inimigo
+                                const forward = new THREE.Vector3();
+                                camera.getWorldDirection(forward);
+                                // Ignora componente Y para considerar apenas direção horizontal (XZ)
+                                forward.y = 0;
+                                if (forward.lengthSq() > 0) forward.normalize();
+                                const toEnemy = enemy.position.clone().sub(playerPos);
+                                toEnemy.y = 0;
+                                let facing = false;
+                                if (toEnemy.lengthSq() > 0) {
+                                    toEnemy.normalize();
+                                    const DOT_THRESHOLD = 0.7; // ~45 graus de tolerância
+                                    facing = forward.dot(toEnemy) > DOT_THRESHOLD;
+                                }
+                                bar.style.display = (enemy.userData.alive && percent > 0 && distToPlayer < ENEMY_BAR_SHOW_DISTANCE && facing) ? 'block' : 'none';
                         });
 
             const time = performance.now();
@@ -951,11 +1009,13 @@
                     const dist = enemy.position.distanceTo(playerPos);
                     if (dist < 30 && dist > 2.5) {
                         const dir = new THREE.Vector3().subVectors(playerPos, enemy.position).normalize();
-                        enemy.position.x += dir.x * delta * 3.5;
-                        enemy.position.z += dir.z * delta * 3.5;
+                        const spd = (enemy.userData && enemy.userData.speed) ? enemy.userData.speed : 3.5;
+                        enemy.position.x += dir.x * delta * spd;
+                        enemy.position.z += dir.z * delta * spd;
                         // Ajusta altura ao terreno
                         const terrainY = getNoiseHeight(enemy.position.x, enemy.position.z);
-                        enemy.position.y = terrainY + 1;
+                        // vertical offset depends on enemy height; keep roughly grounded
+                        enemy.position.y = terrainY + (enemy.userData && enemy.userData.kind === 'zombie' ? 1.2 : 1);
                     }
                     // Dano ao jogador
                     if (dist < 2.2) {
