@@ -227,9 +227,10 @@
         }
 
         // --- CONFIGURAÇÕES GERAIS ---
-        const WORLD_WIDTH = 200;
-        const WORLD_DEPTH = 200;
-        const TERRAIN_MAX_HEIGHT = 15;
+        const WORLD_WIDTH = 400;
+        const WORLD_DEPTH = 400;
+        const TERRAIN_MAX_HEIGHT = 28;
+        const WATER_LEVEL = -2.5;
         const PLAYER_HEIGHT = 2.5; 
         
         // --- ESTADO DO JOGO ---
@@ -295,32 +296,122 @@
 
         // --- TERRENO ---
         const simplex = new SimplexNoise();
-        const geometry = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH, 120, 120);
+        const geometry = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH, 180, 180);
         geometry.rotateX(-Math.PI / 2);
 
         const vertices = geometry.attributes.position.array;
         const colors = [];
 
         function getNoiseHeight(x, z) {
-            // Suavização: usar frequências menores e interpolação
-            let y1 = simplex.noise2D(x * 0.012, z * 0.012) * (TERRAIN_MAX_HEIGHT * 0.7);
-            let y2 = simplex.noise2D(x * 0.04, z * 0.04) * (TERRAIN_MAX_HEIGHT * 0.2);
-            let y3 = simplex.noise2D(x * 0.12, z * 0.12) * (TERRAIN_MAX_HEIGHT * 0.08);
+            // Camadas de ruído: grandes formas, médios detalhes e pequenos detalhes
+            let y1 = simplex.noise2D(x * 0.008, z * 0.008) * (TERRAIN_MAX_HEIGHT * 0.6);
+            let y2 = simplex.noise2D(x * 0.03, z * 0.03) * (TERRAIN_MAX_HEIGHT * 0.25);
+            let y3 = simplex.noise2D(x * 0.12, z * 0.12) * (TERRAIN_MAX_HEIGHT * 0.12);
             let y = y1 + y2 + y3;
-            // Interpolação para suavizar ainda mais
-            y = (y + simplex.noise2D((x+1) * 0.012, (z+1) * 0.012) * (TERRAIN_MAX_HEIGHT * 0.7)) / 2;
-            return Math.max(-10, y);
+
+            // Cria bacias/lagos usando outra camada de ruído de baixa frequência
+            const basin = (simplex.noise2D(x * 0.005 + 1000, z * 0.005 + 1000) - 0.15) * 10; // valores negativos criam depressões
+            if (basin < 0) y += basin; // aprofunda o terreno em zonas de bacia
+
+            // Suaviza levemente
+            y = (y + simplex.noise2D((x + 1) * 0.008, (z + 1) * 0.008) * (TERRAIN_MAX_HEIGHT * 0.6)) / 2;
+            return Math.max(-20, y);
         }
 
-        for (let i = 0; i < vertices.length; i += 3) {
-            const x = vertices[i];
-            const z = vertices[i + 2];
-            const y = getNoiseHeight(x, z);
-            vertices[i + 1] = y;
+        // Prepara cores levando em conta água/areia/grama/pedra
+        function isNearWater(x, z) {
+            const steps = [ -3, 0, 3 ];
+            for (let sx of steps) for (let sz of steps) {
+                const ny = getNoiseHeight(x + sx, z + sz);
+                if (ny <= WATER_LEVEL + 0.3) return true;
+            }
+            return false;
+        }
 
-            if (y < -2) colors.push(0.76, 0.7, 0.5); // Areia
-            else if (y < 8) colors.push(0.2, 0.8, 0.2); // Grama
-            else colors.push(0.5, 0.5, 0.5); // Pedra
+        // Construir uma grade de alturas, aplicar 2 passadas de suavização e então atribuir aos vértices
+        const segX = geometry.parameters.widthSegments;
+        const segY = geometry.parameters.heightSegments;
+        const cols = segX + 1;
+        const rows = segY + 1;
+        const heights = new Float32Array(cols * rows);
+
+        // Preencher alturas iniciais a partir do ruído
+        for (let j = 0; j < rows; j++) {
+            for (let i = 0; i < cols; i++) {
+                const idx = (j * cols + i) * 3;
+                const x = vertices[idx];
+                const z = vertices[idx + 2];
+                heights[j * cols + i] = getNoiseHeight(x, z);
+            }
+        }
+
+        // Suavização: 2 passadas médias com vizinhos (preserva formas menores)
+        const PASSES = 2;
+        for (let pass = 0; pass < PASSES; pass++) {
+            const next = new Float32Array(heights.length);
+            for (let j = 0; j < rows; j++) {
+                for (let i = 0; i < cols; i++) {
+                    let sum = 0, count = 0;
+                    for (let oy = -1; oy <= 1; oy++) {
+                        for (let ox = -1; ox <= 1; ox++) {
+                            const ni = i + ox, nj = j + oy;
+                            if (ni >= 0 && ni < cols && nj >= 0 && nj < rows) {
+                                sum += heights[nj * cols + ni];
+                                count++;
+                            }
+                        }
+                    }
+                    next[j * cols + i] = sum / count;
+                }
+            }
+            for (let k = 0; k < heights.length; k++) heights[k] = next[k];
+        }
+
+        // Função para amostrar a altura suavizada (bilinear) — usada por spawns/objetos
+        function sampleHeight(x, z) {
+            const fx = (x + WORLD_WIDTH / 2) / WORLD_WIDTH * segX;
+            const fz = (z + WORLD_DEPTH / 2) / WORLD_DEPTH * segY;
+            const ix = Math.floor(Math.max(0, Math.min(segX - 1, fx)));
+            const iz = Math.floor(Math.max(0, Math.min(segY - 1, fz)));
+            const tx = fx - ix;
+            const tz = fz - iz;
+            const i00 = iz * cols + ix;
+            const i10 = iz * cols + (ix + 1);
+            const i01 = (iz + 1) * cols + ix;
+            const i11 = (iz + 1) * cols + (ix + 1);
+            const h00 = heights[i00] || 0;
+            const h10 = heights[i10] || h00;
+            const h01 = heights[i01] || h00;
+            const h11 = heights[i11] || h00;
+            const h0 = h00 * (1 - tx) + h10 * tx;
+            const h1 = h01 * (1 - tx) + h11 * tx;
+            return h0 * (1 - tz) + h1 * tz;
+        }
+
+        // Aplicar alturas suavizadas aos vértices e gerar cores
+        for (let j = 0; j < rows; j++) {
+            for (let i = 0; i < cols; i++) {
+                const vIdx = (j * cols + i) * 3;
+                const h = heights[j * cols + i];
+                vertices[vIdx + 1] = h;
+
+                // determine se está próximo da água usando vizinhos
+                let nearWater = false;
+                for (let oy = -1; oy <= 1 && !nearWater; oy++) {
+                    for (let ox = -1; ox <= 1; ox++) {
+                        const ni = i + ox, nj = j + oy;
+                        if (ni >= 0 && ni < cols && nj >= 0 && nj < rows) {
+                            if (heights[nj * cols + ni] <= WATER_LEVEL + 0.3) { nearWater = true; break; }
+                        }
+                    }
+                }
+
+                if (h <= WATER_LEVEL) colors.push(0.12, 0.18, 0.25);
+                else if (nearWater && h <= WATER_LEVEL + 2.5) colors.push(0.93, 0.86, 0.66);
+                else if (h < 6) colors.push(0.18, 0.72, 0.2);
+                else if (h < 14) colors.push(0.54, 0.42, 0.26);
+                else colors.push(0.56, 0.56, 0.58);
+            }
         }
 
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -333,8 +424,17 @@
         terrain.receiveShadow = true;
         scene.add(terrain);
 
+        // Água: plano simples cobrindo o mapa
+        const waterGeo = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH, 1, 1);
+        const waterMat = new THREE.MeshPhongMaterial({ color: 0x2a6fb3, transparent: true, opacity: 0.6, shininess: 40 });
+        const water = new THREE.Mesh(waterGeo, waterMat);
+        water.rotateX(-Math.PI / 2);
+        water.position.y = WATER_LEVEL + 0.05;
+        water.receiveShadow = true;
+        scene.add(water);
+
         // Posição inicial da câmera (acima do terreno)
-        const initY = getNoiseHeight(0, 0) + PLAYER_HEIGHT + 2;
+        const initY = (typeof sampleHeight === 'function') ? sampleHeight(0, 0) + PLAYER_HEIGHT + 2 : getNoiseHeight(0,0) + PLAYER_HEIGHT + 2;
         camera.position.set(0, initY, 30);
 
 
@@ -346,18 +446,20 @@
             { type: 'stone', color: 0x888888 },
             { type: 'sand', color: 0xEED28A }
         ];
-        // Adiciona alguns blocos no mundo para teste (alinha ao terreno)
-        for (let i = 0; i < 30; i++) {
-            const t = blockTypes[Math.floor(Math.random()*blockTypes.length)];
+        // Adiciona blocos no mundo obedecendo ao tipo de terreno
+        for (let i = 0; i < 180; i++) {
+            const x = (Math.random() - 0.5) * (WORLD_WIDTH * 0.9);
+            const z = (Math.random() - 0.5) * (WORLD_DEPTH * 0.9);
+            const terrainY = (typeof sampleHeight === 'function') ? sampleHeight(x, z) : getNoiseHeight(x, z);
+            let t = blockTypes[0]; // dirt por padrão
+            if (terrainY <= WATER_LEVEL + 1.2) t = blockTypes.find(b => b.type === 'sand');
+            else if (terrainY > 12) t = blockTypes.find(b => b.type === 'stone');
+
             const mesh = new THREE.Mesh(
                 new THREE.BoxGeometry(blockSize, blockSize, blockSize),
                 new THREE.MeshStandardMaterial({ color: t.color })
             );
-            const x = (Math.random()-0.5)*60;
-            const z = (Math.random()-0.5)*60;
-            const terrainY = getNoiseHeight(x, z);
-            // posiciona o bloco alinhado ao chão (meio do bloco sobre o terreno)
-            mesh.position.set(x, terrainY + blockSize/2, z);
+            mesh.position.set(x, terrainY + blockSize / 2, z);
             mesh.castShadow = true;
             mesh.userData = { type: t.type };
             scene.add(mesh);
@@ -426,11 +528,11 @@
         }
 
         // Spawnar alguns inimigos
-        for (let i = 0; i < 8; i++) {
-            const x = (Math.random() - 0.5) * 160;
-            const z = (Math.random() - 0.5) * 160;
+        for (let i = 0; i < 12; i++) {
+            const x = (Math.random() - 0.5) * (WORLD_WIDTH * 0.8);
+            const z = (Math.random() - 0.5) * (WORLD_DEPTH * 0.8);
             const y = getNoiseHeight(x, z);
-            if (y > 1) spawnEnemy(x, z, y);
+            if (y > WATER_LEVEL + 1) spawnEnemy(x, z, y);
         }
 
         function spawnTree(x, z, y) {
@@ -504,24 +606,26 @@
         }
 
         // Popular
-        for (let i = 0; i < 100; i++) {
-            const x = (Math.random() - 0.5) * 180;
-            const z = (Math.random() - 0.5) * 180;
-            const y = getNoiseHeight(x, z);
+        for (let i = 0; i < 240; i++) {
+            const x = (Math.random() - 0.5) * (WORLD_WIDTH * 0.9);
+            const z = (Math.random() - 0.5) * (WORLD_DEPTH * 0.9);
+            const y = (typeof sampleHeight === 'function') ? sampleHeight(x, z) : getNoiseHeight(x, z);
 
-            if (y > 0.5) {
+            if (y > WATER_LEVEL + 0.5) {
                 const r = Math.random();
                 if (r < 0.55) spawnTree(x, z, y);
                 else if (r < 0.75) spawnItem('food', x, z, y);
                 else if (r < 0.93) spawnItem('water', x, z, y);
                 else spawnItem('sword', x, z, y);
             }
+            // small chance to spawn beach items near water
+            else if (y <= WATER_LEVEL + 1.8 && Math.random() < 0.05) spawnItem('food', x, z, y);
         }
 
         // --- CONTROLES E SISTEMA DE JOGO ---
         const controls = new PointerLockControls(camera, document.body);
         // Posiciona o objeto de controle (jogador) acima do terreno no início
-        controls.getObject().position.set(0, getNoiseHeight(0, 0) + PLAYER_HEIGHT, 30);
+        controls.getObject().position.set(0, (typeof sampleHeight === 'function') ? sampleHeight(0, 0) + PLAYER_HEIGHT : getNoiseHeight(0,0) + PLAYER_HEIGHT, 30);
         
         const blocker = document.getElementById('blocker');
         const instructions = document.getElementById('instructions');
@@ -706,11 +810,11 @@
                 else if (item.type === 'sand') iconClass = '';
                 // Se for espada, tenta gerar um ícone via canvas/textura
                 if (item.type === 'sword') {
-                    const canvas = createSwordTextureCanvas(64, 128);
-                    const dataUrl = canvas.toDataURL();
+                    const icon = createSwordIconCanvas(80);
+                    const dataUrl = icon.toDataURL();
                     slot.innerHTML = `
-                        <div style="width:30px;height:30px;border-radius:4px;margin-bottom:5px;background:#000;display:flex;align-items:center;justify-content:center;">
-                            <img src="${dataUrl}" style="width:26px;height:26px;object-fit:cover;border-radius:3px;" />
+                        <div style="width:60px;height:60px;border-radius:8px;margin-bottom:5px;display:flex;align-items:center;justify-content:center;">
+                            <img src="${dataUrl}" style="width:56px;height:56px;display:block;" />
                         </div>
                         <span class="item-count">${item.name}</span>
                     `;
@@ -884,6 +988,49 @@
             shineGrad.addColorStop(1, 'rgba(255,255,255,0)');
             ctx.fillStyle = shineGrad;
             ctx.fillRect(width / 2 - 6, 0, 12, height);
+
+            return canvas;
+        }
+
+        // Gera um ícone pequeno da espada com fundo transparente (para inventário)
+        function createSwordIconCanvas(size = 80) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0,0,size,size);
+
+            // Centraliza e desenha espada estilizada
+            const cx = size/2;
+            const cy = size/2 + 4;
+
+            // Lâmina (um retângulo longo fino)
+            const bladeH = size * 0.58;
+            const bladeW = Math.max(2, Math.floor(size * 0.12));
+            const bladeX = cx - bladeW/2;
+            const bladeY = cy - bladeH/2 - 6;
+            const grad = ctx.createLinearGradient(bladeX, bladeY, bladeX+bladeW, bladeY+bladeH);
+            grad.addColorStop(0, '#f3f6fb'); grad.addColorStop(0.5,'#cfd8e7'); grad.addColorStop(1,'#bfc8dd');
+            ctx.fillStyle = grad;
+            // sombra leve
+            ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
+            ctx.fillRect(bladeX, bladeY, bladeW, bladeH);
+            ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+            // Brilho central
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.fillRect(cx - 2, bladeY, 4, bladeH);
+
+            // Guarda
+            const guardW = bladeW * 2.2;
+            const guardH = Math.max(2, Math.floor(size * 0.06));
+            ctx.fillStyle = '#d4b24a';
+            ctx.fillRect(cx - guardW/2, bladeY + bladeH*0.6, guardW, guardH);
+
+            // Cabo
+            const handleH = Math.max(6, Math.floor(size * 0.16));
+            ctx.fillStyle = '#7a4a2d';
+            ctx.fillRect(cx - bladeW/2, bladeY + bladeH*0.6 + guardH, bladeW, handleH);
 
             return canvas;
         }
@@ -1155,7 +1302,7 @@
                         enemy.position.x += dir.x * delta * spd;
                         enemy.position.z += dir.z * delta * spd;
                         // Ajusta altura ao terreno
-                        const terrainY = getNoiseHeight(enemy.position.x, enemy.position.z);
+                        const terrainY = (typeof sampleHeight === 'function') ? sampleHeight(enemy.position.x, enemy.position.z) : getNoiseHeight(enemy.position.x, enemy.position.z);
                         // vertical offset depends on enemy height; keep roughly grounded
                         enemy.position.y = terrainY + (enemy.userData && enemy.userData.kind === 'zombie' ? 1.2 : 1);
                     }
@@ -1235,3 +1382,4 @@
     </script>
 </body>
 </html>
+
