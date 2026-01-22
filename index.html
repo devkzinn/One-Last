@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>One Last</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
         
@@ -106,6 +107,30 @@
         .item-count { font-size: 12px; color: #ccc; }
         .close-btn { position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; font-size: 20px; color: #e74c3c; }
 
+        /* Menu inicial estilizado - aparência mais profissional */
+        body { background: linear-gradient(180deg,#1f2933 0%, #182028 100%); }
+        /* Usa a capa como imagem de fundo com overlay levemente escuro */
+        #blocker {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background-image: url('imagens/Capa_One_Last.png'); background-size: cover; background-position: center; background-attachment: fixed;
+        }
+        #blocker::before { content: ''; position: absolute; inset: 0; background: rgba(8,10,12,0.55); pointer-events: none; }
+        #instructions { display:flex; flex-direction:column; align-items:center; gap:14px; position:relative; z-index:2; }
+        .menu-panel { width: 640px; max-width: 86vw; min-height: 220px; background: rgba(6,8,10,0.62); border: 1px solid rgba(255,255,255,0.03); border-radius: 14px; padding: 18px 28px; display:flex; flex-direction:column; justify-content:center; align-items:center; box-shadow: 0 10px 30px rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
+        .title-main { display:none; }
+        /* Título no canto superior esquerdo sobre a capa */
+        #title-top-right { position: absolute; top: 18px; left: 22px; z-index: 3; font-size: 26px; font-weight: 700; color: #efece6; background: rgba(0,0,0,0.45); padding: 8px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); font-family: 'Cinzel', serif; letter-spacing: 1px; text-transform: uppercase; }
+        .menu-row { display:flex; gap:18px; align-items:center; justify-content:center; }
+        .menu-btn { padding:12px 22px; font-size:16px; cursor:pointer; background: rgba(255,255,255,0.06); color:#f3f3f3; border: 1px solid rgba(255,255,255,0.06); border-radius:10px; box-shadow: 0 6px 0 rgba(0,0,0,0.3); transition: transform 0.12s cubic-bezier(.2,.9,.3,1), box-shadow 0.12s, background 0.12s; }
+        .menu-btn:hover { transform: translateY(-4px); background: rgba(255,255,255,0.12); box-shadow: 0 14px 26px rgba(0,0,0,0.45); }
+        .menu-btn:active { transform: translateY(-2px); }
+        .menu-subtext { margin-top:12px; font-size:13px; color:rgba(255,255,255,0.8); }
+        @keyframes fadeInUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+        .fade-in-up { animation: fadeInUp 560ms ease both; }
+
         /* Estilo das Barras de Status */
         .stat-box {
             background: rgba(0, 0, 0, 0.5);
@@ -158,18 +183,22 @@
 </head>
 <body>
 
-    <div id="blocker">
-        <div id="instructions">
-            <h1 style="margin:0;">One Last</h1>
-            <!-- menu tagline removed as requested -->
-            <div style="margin-top:18px;">
-                <button id="start-btn" style="padding:12px 24px;margin:8px;font-size:18px;cursor:pointer;">Começar</button>
-                <button id="resume-btn" style="padding:12px 24px;margin:8px;font-size:18px;cursor:pointer;display:none;">Retomar</button>
-                <button id="tutorial-btn" style="padding:12px 18px;margin:8px;font-size:18px;cursor:pointer;">Tutorial</button>
+        <div id="blocker">
+            <div id="title-top-right">ONE LAST</div>
+            <div id="instructions" class="menu-panel fade-in-up">
+                <div class="title-main">One Last</div>
+                <div class="menu-row" style="margin-top:8px;">
+                    <button id="start-btn" class="menu-btn">Começar</button>
+                    <button id="options-btn" class="menu-btn">Opções</button>
+                </div>
+                <div class="menu-row" style="margin-top:12px;">
+                    <button id="tutorial-btn" class="menu-btn">Tutorial</button>
+                    <button id="about-btn" class="menu-btn">Sobre</button>
+                </div>
+                <button id="resume-btn" class="menu-btn" style="display:none;margin-top:14px;">Retomar</button>
+                <div class="menu-subtext">Pressione Começar para iniciar sua jornada.</div>
             </div>
-            <div style="margin-top:20px;font-size:14px;opacity:0.85;">Pressione Começar para iniciar sua jornada.</div>
         </div>
-    </div>
 
     <!-- Barras de vida dos inimigos -->
     <div id="enemies-health-bars" style="position:absolute;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:20;"></div>
@@ -234,8 +263,8 @@
         // Patch tuning
         const PATCH_settings = {
             pedraAltitudeThreshold: 8, // altitude acima da qual consideramos "rochosas"
-            pedrinhaChance: 0.85, // chance de gerar pedrinhas em uma posição rochosa
-            pedrinhaCountMax: 3, // máximo pedrinhas por ponto
+            pedrinhaChance: 0.5, // chance de gerar pedrinhas em uma posição rochosa (reduzida)
+            pedrinhaCountMax: 2, // máximo pedrinhas por ponto (reduzido)
             areiaOpacity: 0.85,
             terraRoughness: 0.95,
             terraPatchScaleMin: 0.8,
@@ -695,6 +724,11 @@
         startBtn.addEventListener('click', function () { startGame(); });
         resumeBtn.addEventListener('click', function () { controls.lock(); blocker.style.display = 'none'; });
         tutorialBtn.addEventListener('click', function () { openTutorial(); });
+        // Novos botões: Sobre e Opções
+        const aboutBtn = document.getElementById('about-btn');
+        const optionsBtn = document.getElementById('options-btn');
+        if (aboutBtn) aboutBtn.addEventListener('click', function () { openAbout(); });
+        if (optionsBtn) optionsBtn.addEventListener('click', function () { openOptions(); });
 
         // Eventos do PointerLock
         controls.addEventListener('lock', function () {
@@ -783,6 +817,37 @@
             `;
             document.body.appendChild(div);
             document.getElementById('close-tutorial').addEventListener('click', () => { div.remove(); });
+        }
+
+        // Modal 'Sobre'
+        function openAbout() {
+            if (document.getElementById('about-modal')) return;
+            const div = document.createElement('div');
+            div.id = 'about-modal';
+            div.style = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:24px;z-index:1000;border-radius:10px;max-width:500px;';
+            div.innerHTML = `
+                <h2 style="margin-top:0;">Sobre</h2>
+                <p>One Last Pré Alpha Versão: -5.1</p>
+                <p>Criador: Kzinn</p>
+                <div style="text-align:right;margin-top:12px;"><button id="close-about" style="padding:8px 12px;">Fechar</button></div>
+            `;
+            document.body.appendChild(div);
+            document.getElementById('close-about').addEventListener('click', () => { div.remove(); });
+        }
+
+        // Modal 'Opções' (apenas mensagem por enquanto)
+        function openOptions() {
+            if (document.getElementById('options-modal')) return;
+            const div = document.createElement('div');
+            div.id = 'options-modal';
+            div.style = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:24px;z-index:1000;border-radius:10px;max-width:500px;';
+            div.innerHTML = `
+                <h2 style="margin-top:0;">Opções</h2>
+                <p>ainda não é possivel mexer aqui!</p>
+                <div style="text-align:right;margin-top:12px;"><button id="close-options" style="padding:8px 12px;">Fechar</button></div>
+            `;
+            document.body.appendChild(div);
+            document.getElementById('close-options').addEventListener('click', () => { div.remove(); });
         }
 
         // Controles de Teclado
