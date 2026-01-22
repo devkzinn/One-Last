@@ -109,25 +109,39 @@
 
         /* Menu inicial estilizado - aparência mais profissional */
         body { background: linear-gradient(180deg,#1f2933 0%, #182028 100%); }
-        /* Usa a capa como imagem de fundo com overlay levemente escuro */
+        /* Usa a capa como imagem de fundo com overlay levemente escuro. Removido 'fixed' para evitar pixelização e adicionada camada de ruído e suavização. */
         #blocker {
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100vh;
             display: flex; align-items: center; justify-content: center;
-            background-image: url('imagens/Capa_One_Last.png'); background-size: cover; background-position: center; background-attachment: fixed;
+            background-image: url('imagens/Capa_One_Last.png');
+            background-size: cover; background-position: center center; background-repeat: no-repeat;
+            will-change: transform; transform: translateZ(0);
+            -webkit-font-smoothing: antialiased;
+            image-rendering: auto;
         }
-        #blocker::before { content: ''; position: absolute; inset: 0; background: rgba(8,10,12,0.55); pointer-events: none; }
+        /* Dark overlay to improve legibility */
+        #blocker::before { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(6,8,10,0.62), rgba(6,8,10,0.72)); pointer-events: none; }
+        /* Subtle film grain to mask pixelation */
+        #blocker::after { content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: overlay; opacity: 0.08; background-image: repeating-linear-gradient(transparent 0 2px, rgba(0,0,0,0.03) 2px 3px); }
         #instructions { display:flex; flex-direction:column; align-items:center; gap:14px; position:relative; z-index:2; }
-        .menu-panel { width: 640px; max-width: 86vw; min-height: 220px; background: rgba(6,8,10,0.62); border: 1px solid rgba(255,255,255,0.03); border-radius: 14px; padding: 18px 28px; display:flex; flex-direction:column; justify-content:center; align-items:center; box-shadow: 0 10px 30px rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
+        .menu-panel { width: 720px; max-width: 88vw; min-height: 220px; background: linear-gradient(180deg, rgba(10,12,14,0.78), rgba(6,8,10,0.6)); border: 1px solid rgba(255,255,255,0.04); border-radius: 14px; padding: 22px 30px; display:flex; flex-direction:column; justify-content:center; align-items:center; box-shadow: 0 14px 40px rgba(0,0,0,0.7), inset 0 0 40px rgba(255,255,255,0.01); backdrop-filter: blur(6px) saturate(120%); }
+        .menu-panel::before { content: ''; position: absolute; width: 100%; height: 100%; left: 0; top: 0; border-radius: 14px; pointer-events: none; background-image: linear-gradient(transparent, rgba(255,255,255,0.02)); }
+        .menu-panel::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 14px; background: radial-gradient(ellipse at center, rgba(255,255,255,0.02), transparent 30%); }
         .title-main { display:none; }
+        /* Prominent title on the top-left to give a gamer vibe */
+        #title-top-right { font-family: 'Cinzel', serif; letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
         /* Título no canto superior esquerdo sobre a capa */
         #title-top-right { position: absolute; top: 18px; left: 22px; z-index: 3; font-size: 26px; font-weight: 700; color: #efece6; background: rgba(0,0,0,0.45); padding: 8px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); font-family: 'Cinzel', serif; letter-spacing: 1px; text-transform: uppercase; }
         .menu-row { display:flex; gap:18px; align-items:center; justify-content:center; }
-        .menu-btn { padding:12px 22px; font-size:16px; cursor:pointer; background: rgba(255,255,255,0.06); color:#f3f3f3; border: 1px solid rgba(255,255,255,0.06); border-radius:10px; box-shadow: 0 6px 0 rgba(0,0,0,0.3); transition: transform 0.12s cubic-bezier(.2,.9,.3,1), box-shadow 0.12s, background 0.12s; }
-        .menu-btn:hover { transform: translateY(-4px); background: rgba(255,255,255,0.12); box-shadow: 0 14px 26px rgba(0,0,0,0.45); }
-        .menu-btn:active { transform: translateY(-2px); }
-        .menu-subtext { margin-top:12px; font-size:13px; color:rgba(255,255,255,0.8); }
+        .menu-btn { padding:14px 28px; font-size:16px; cursor:pointer; background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03)); color:#f3f3f3; border: 1px solid rgba(255,255,255,0.06); border-radius:12px; box-shadow: 0 8px 0 rgba(0,0,0,0.4); transition: transform 0.16s cubic-bezier(.2,.9,.3,1), box-shadow 0.16s, background 0.16s; position:relative; z-index:2; }
+        .menu-btn:hover { transform: translateY(-6px); background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)); box-shadow: 0 18px 34px rgba(0,0,0,0.5), 0 0 14px rgba(70,140,255,0.08); }
+        .menu-btn:active { transform: translateY(-3px); }
+        .menu-btn:focus { outline: none; box-shadow: 0 8px 24px rgba(70,140,255,0.12); }
+        .menu-subtext { margin-top:14px; font-size:13px; color:rgba(255,255,255,0.85); }
+        /* small accent under the menu */
+        .menu-accent { height: 2px; width: 120px; background: linear-gradient(90deg, rgba(70,140,255,0.9), rgba(120,80,220,0.9)); border-radius:2px; margin-top:12px; box-shadow: 0 6px 20px rgba(70,140,255,0.06); }
         @keyframes fadeInUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
         .fade-in-up { animation: fadeInUp 560ms ease both; }
 
@@ -249,7 +263,8 @@
             timeOfDay += delta * 0.01; // 1 ciclo = ~100s
             if (timeOfDay > 1) timeOfDay -= 1;
             // Luz ambiente e cor do céu
-            const t = Math.abs(Math.sin(timeOfDay * Math.PI));
+            // Usa cos em vez de sin para que timeOfDay=0.5 resulte no valor mínimo (noite)
+            const t = Math.abs(Math.cos(timeOfDay * Math.PI));
             scene.background.setHSL(0.6, 0.7, 0.5 * t + 0.1);
             scene.fog.color.setHSL(0.6, 0.7, 0.5 * t + 0.1);
             hemiLight.intensity = 0.2 + 0.6 * t;
@@ -482,9 +497,44 @@
         water.receiveShadow = true;
         scene.add(water);
 
-        // Posição inicial da câmera (acima do terreno)
-        const initY = (typeof sampleHeight === 'function') ? sampleHeight(0, 0) + PLAYER_HEIGHT + 2 : getNoiseHeight(0,0) + PLAYER_HEIGHT + 2;
-        camera.position.set(0, initY, 30);
+        // Função para achar um ponto de spawn seguro (não submerso)
+        function findSafeSpawn(startX = 0, startZ = 30, maxAttempts = 500, searchRadius = 80) {
+            if (typeof sampleHeight !== 'function') {
+                const fallbackY = getNoiseHeight(startX, startZ);
+                return { x: startX, y: Math.max(fallbackY, WATER_LEVEL + 1) + PLAYER_HEIGHT, z: startZ };
+            }
+            let y = sampleHeight(startX, startZ);
+            if (y > WATER_LEVEL + 0.5) return { x: startX, y: y + PLAYER_HEIGHT, z: startZ };
+
+            // Tenta pontos aleatórios ao redor do ponto desejado
+            for (let i = 0; i < maxAttempts; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = Math.random() * searchRadius;
+                const x = startX + Math.cos(a) * r;
+                const z = startZ + Math.sin(a) * r;
+                y = sampleHeight(x, z);
+                if (y > WATER_LEVEL + 0.5) return { x: x, y: y + PLAYER_HEIGHT, z: z };
+            }
+
+            // Varredura simples em grade como último recurso
+            const step = 4;
+            for (let dx = -searchRadius; dx <= searchRadius; dx += step) {
+                for (let dz = -searchRadius; dz <= searchRadius; dz += step) {
+                    const x = startX + dx;
+                    const z = startZ + dz;
+                    y = sampleHeight(x, z);
+                    if (y > WATER_LEVEL + 0.5) return { x: x, y: y + PLAYER_HEIGHT, z: z };
+                }
+            }
+
+            // Fallback: força acima do nível d'água
+            const safeY = Math.max(sampleHeight(startX, startZ), WATER_LEVEL + 1);
+            return { x: startX, y: safeY + PLAYER_HEIGHT, z: startZ };
+        }
+
+        // Posição inicial da câmera (acima do terreno) — procura um ponto seguro em z=30
+        const spawnPoint = findSafeSpawn(0, 30);
+        camera.position.set(spawnPoint.x, spawnPoint.y + 2, spawnPoint.z);
 
 
         // --- BLOCOS (MINERAÇÃO/COLOCAÇÃO) ---
@@ -712,7 +762,12 @@
         // --- CONTROLES E SISTEMA DE JOGO ---
         const controls = new PointerLockControls(camera, document.body);
         // Posiciona o objeto de controle (jogador) acima do terreno no início
-        controls.getObject().position.set(0, (typeof sampleHeight === 'function') ? sampleHeight(0, 0) + PLAYER_HEIGHT : getNoiseHeight(0,0) + PLAYER_HEIGHT, 30);
+        // Posiciona o objeto de controle (jogador) acima do terreno no início usando ponto seguro
+        if (typeof spawnPoint !== 'undefined') {
+            controls.getObject().position.set(spawnPoint.x, spawnPoint.y, spawnPoint.z);
+        } else {
+            controls.getObject().position.set(0, (typeof sampleHeight === 'function') ? sampleHeight(0, 0) + PLAYER_HEIGHT : getNoiseHeight(0,0) + PLAYER_HEIGHT, 30);
+        }
         
         const blocker = document.getElementById('blocker');
         const instructions = document.getElementById('instructions');
