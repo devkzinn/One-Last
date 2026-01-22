@@ -35,7 +35,7 @@
         }
         #instructions { font-size: 24px; cursor: pointer; }
         
-        /* INVENTÁRIO (NOVO) */
+        /* INVENTÁRIO */
         #inventory-container {
             display: none; /* Escondido por padrão */
             position: absolute;
@@ -79,10 +79,10 @@
         .inv-slot:hover { background: rgba(255,255,255,0.2); border-color: white; }
         
         /* Ícones simples via CSS para os itens */
-        .icon-food { width: 30px; height: 30px; background: #e74c3c; border-radius: 4px; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.3); }
-        .icon-water { width: 30px; height: 30px; background: #3498db; border-radius: 50%; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.3); }
-        .icon-sword { width: 30px; height: 30px; margin-bottom: 5px; position: relative; }
-        .icon-sword::before {
+        .icon-comida { width: 30px; height: 30px; background: #e74c3c; border-radius: 4px; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.3); }
+        .icon-agua { width: 30px; height: 30px; background: #3498db; border-radius: 50%; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.3); }
+        .icon-espada { width: 30px; height: 30px; margin-bottom: 5px; position: relative; }
+        .icon-espada::before {
             content: '';
             display: block;
             position: absolute;
@@ -92,7 +92,7 @@
             border-radius: 2px;
             box-shadow: 1px 1px 2px #222;
         }
-        .icon-sword::after {
+        .icon-espada::after {
             content: '';
             display: block;
             position: absolute;
@@ -259,8 +259,10 @@
         let lastTime = performance.now();
         let gameStarted = false;
         
-        // Inventário: Array simples de objetos { type: 'food', name: 'Maçã' }
+        // Inventário: Array de objetos { type: 'comida', name: 'Maçã', count: N }
         let inventory = [];
+        const STACK_LIMIT = 50;
+        const STACKABLE_TYPES = new Set(['comida','agua','terra','pedra','areia','graveto']);
         let isInventoryOpen = false;
         let equippedSword = false;
         let swordMesh = null;
@@ -420,6 +422,88 @@
         const terrainMat = new THREE.MeshStandardMaterial({ 
             vertexColors: true, flatShading: true, roughness: 0.8 
         });
+
+        // Ataque de soco (mão equipada) — causa 8 de dano; derruba gravetos ao destruir árvores
+        window.addEventListener('mousedown', (e) => {
+            if (equippedSword || isInventoryOpen || !controls.isLocked) return;
+            // apenas botão esquerdo
+            if (e.button !== 0) return;
+            const PUNCH_DAMAGE = 8;
+            const playerPos = controls.getObject().position.clone();
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+
+            let hitAnything = false;
+
+            // Ataca inimigos próximos
+            enemies.forEach(enemy => {
+                if (!enemy.userData.alive || enemy.userData.health <= 0) return;
+                const toEnemy = enemy.position.clone().sub(playerPos);
+                const dist = toEnemy.length();
+                toEnemy.y = 0; forward.y = 0;
+                if (toEnemy.lengthSq() === 0) return;
+                const angle = forward.angleTo(toEnemy.normalize());
+                if (dist < 2.4 && angle < Math.PI / 3) {
+                    enemy.userData.health -= PUNCH_DAMAGE;
+                    if (enemy.userData.health <= 0) {
+                        enemy.userData.alive = false;
+                        enemy.visible = false;
+                    }
+                    hitAnything = true;
+                }
+            });
+
+            // Ataca árvores próximas (decrementa vida e eventualmente derruba)
+            for (let i = trees.length - 1; i >= 0; i--) {
+                const tree = trees[i];
+                if (!tree || !tree.userData) continue;
+                const toTree = tree.position.clone().sub(playerPos);
+                const dist = toTree.length();
+                toTree.y = 0; forward.y = 0;
+                if (dist < 3.0) {
+                    // opcionalmente checar ângulo/ frente do jogador
+                    const angle = forward.angleTo(toTree.normalize());
+                    if (angle < Math.PI / 2) {
+                        // Não quebra a árvore — usamos contador por árvore
+                        if (tree.userData.exhausted) {
+                            // já esgotada; socos são em vão
+                            break;
+                        }
+                        hitAnything = true;
+                        // pequeno efeito visual (levantar um pouco)
+                        tree.position.y += 0.03;
+                        setTimeout(() => { if (tree) tree.position.y -= 0.03; }, 120);
+
+                        // Incrementa contador de socos; a cada 2 socos dropar 1 graveto
+                        tree.userData.punches = (tree.userData.punches || 0) + 1;
+                        if (tree.userData.punches >= 2) {
+                            tree.userData.punches = 0; // reseta contagem de pares
+                            if (!tree.userData.twigsDropped) tree.userData.twigsDropped = 0;
+                            if (tree.userData.twigsDropped < 3) {
+                                // dropa exatamente 1 graveto por 2 socos
+                                const tx = tree.position.x, tz = tree.position.z, ty = tree.position.y;
+                                const ox = (Math.random() - 0.5) * 1.2;
+                                const oz = (Math.random() - 0.5) * 1.2;
+                                spawnItem('graveto', tx + ox, tz + oz, ty);
+                                tree.userData.twigsDropped++;
+                                // se atingiu o máximo, marca como exausta
+                                if (tree.userData.twigsDropped >= 3) tree.userData.exhausted = true;
+                            } else {
+                                tree.userData.exhausted = true;
+                            }
+                        }
+                        break; // apenas atinge uma árvore por clique
+                    }
+                }
+            }
+
+            // Animação de soco simples (balanço da câmera)
+            if (hitAnything) {
+                const orig = camera.rotation.x;
+                camera.rotation.x -= 0.08;
+                setTimeout(() => { camera.rotation.x = orig; }, 100);
+            }
+        });
         const terrain = new THREE.Mesh(geometry, terrainMat);
         terrain.receiveShadow = true;
         scene.add(terrain);
@@ -442,18 +526,18 @@
         const blockSize = 2;
         const blocks = [];
         const blockTypes = [
-            { type: 'dirt', color: 0x8B5A2B },
-            { type: 'stone', color: 0x888888 },
-            { type: 'sand', color: 0xEED28A }
+            { type: 'terra', color: 0x8B5A2B },
+            { type: 'pedra', color: 0x888888 },
+            { type: 'areia', color: 0xEED28A }
         ];
         // Adiciona blocos no mundo obedecendo ao tipo de terreno
         for (let i = 0; i < 180; i++) {
             const x = (Math.random() - 0.5) * (WORLD_WIDTH * 0.9);
             const z = (Math.random() - 0.5) * (WORLD_DEPTH * 0.9);
             const terrainY = (typeof sampleHeight === 'function') ? sampleHeight(x, z) : getNoiseHeight(x, z);
-            let t = blockTypes[0]; // dirt por padrão
-            if (terrainY <= WATER_LEVEL + 1.2) t = blockTypes.find(b => b.type === 'sand');
-            else if (terrainY > 12) t = blockTypes.find(b => b.type === 'stone');
+            let t = blockTypes[0]; // terra por padrão
+            if (terrainY <= WATER_LEVEL + 1.2) t = blockTypes.find(b => b.type === 'areia');
+            else if (terrainY > 12) t = blockTypes.find(b => b.type === 'pedra');
 
             const mesh = new THREE.Mesh(
                 new THREE.BoxGeometry(blockSize, blockSize, blockSize),
@@ -471,6 +555,8 @@
 
         // --- INIMIGOS ---
         const enemies = [];
+        // Árvores no mundo (referências para interações)
+        const trees = [];
         function spawnEnemy(x, z, y, kind) {
             // Monstros: 'vampiro' | 'Lobisomen' | 'zombie'
             const kinds = ['vampiro', 'Lobisomen', 'zombie'];
@@ -553,11 +639,14 @@
             treeGroup.add(leaves);
 
             treeGroup.position.set(x, y, z);
+            // marca dados para interação (contador de socos e gravetos)
+            treeGroup.userData = { type: 'tree', punches: 0, twigsDropped: 0, exhausted: false };
             scene.add(treeGroup);
+            trees.push(treeGroup);
         }
 
         function spawnItem(type, x, z, y) {
-            if (type === 'food') { 
+            if (type === 'comida') { 
                 const geometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
                 const material = new THREE.MeshStandardMaterial({ color: 0xFF4444, roughness: 0.2 });
                 const mesh = new THREE.Mesh(geometry, material);
@@ -566,7 +655,7 @@
                 mesh.userData = { type: type, active: true, baseY: mesh.position.y, phase: Math.random() * Math.PI * 2 };
                 scene.add(mesh);
                 itemsInWorld.push(mesh);
-            } else if (type === 'water') {
+            } else if (type === 'agua') {
                 const geometry = new THREE.SphereGeometry(0.4, 8, 8);
                 const material = new THREE.MeshStandardMaterial({ color: 0x4444FF, roughness: 0.2 });
                 const mesh = new THREE.Mesh(geometry, material);
@@ -575,7 +664,7 @@
                 mesh.userData = { type: type, active: true, baseY: mesh.position.y, phase: Math.random() * Math.PI * 2 };
                 scene.add(mesh);
                 itemsInWorld.push(mesh);
-            } else if (type === 'sword') {
+            } else if (type === 'espada') {
                 // Cria uma malha de espada com lâmina texturizada
                 const bladeGeo = new THREE.BoxGeometry(0.15, 0.9, 0.12);
                 const bladeTex = createSwordTexture(64, 256);
@@ -602,6 +691,16 @@
                 group.userData = { type: type, active: true, baseY: group.position.y, phase: Math.random() * Math.PI * 2 };
                 scene.add(group);
                 itemsInWorld.push(group);
+            } else if (type === 'graveto') {
+                const geom = new THREE.BoxGeometry(0.2, 0.06, 0.6);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.8 });
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.position.set(x, y + 0.4, z);
+                mesh.rotation.y = Math.random() * Math.PI * 2;
+                mesh.castShadow = true;
+                mesh.userData = { type: type, active: true, baseY: mesh.position.y, phase: Math.random() * Math.PI * 2 };
+                scene.add(mesh);
+                itemsInWorld.push(mesh);
             }
         }
 
@@ -614,12 +713,12 @@
             if (y > WATER_LEVEL + 0.5) {
                 const r = Math.random();
                 if (r < 0.55) spawnTree(x, z, y);
-                else if (r < 0.75) spawnItem('food', x, z, y);
-                else if (r < 0.93) spawnItem('water', x, z, y);
-                else spawnItem('sword', x, z, y);
+                else if (r < 0.75) spawnItem('comida', x, z, y);
+                else if (r < 0.93) spawnItem('agua', x, z, y);
+                else spawnItem('espada', x, z, y);
             }
             // small chance to spawn beach items near water
-            else if (y <= WATER_LEVEL + 1.8 && Math.random() < 0.05) spawnItem('food', x, z, y);
+            else if (y <= WATER_LEVEL + 1.8 && Math.random() < 0.05) spawnItem('comida', x, z, y);
         }
 
         // --- CONTROLES E SISTEMA DE JOGO ---
@@ -768,18 +867,29 @@
         };
 
         function addToInventory(type) {
-            let name = '';
-            if (type === 'food') name = 'Maçã';
-            else if (type === 'water') name = 'Água';
-            else if (type === 'sword') name = 'Espada';
-            else if (type === 'dirt') name = 'Terra';
-            else if (type === 'stone') name = 'Pedra';
-            else if (type === 'sand') name = 'Areia';
-            inventory.push({
-                type: type,
-                name: name,
-                id: Date.now() + Math.random() // ID único
-            });
+            const nameMap = { comida: 'Maçã', agua: 'Água', espada: 'Espada', terra: 'Terra', pedra: 'Pedra', areia: 'Areia', graveto: 'Graveto' };
+            const name = nameMap[type] || type;
+            const isStackable = STACKABLE_TYPES.has(type);
+
+            if (isStackable) {
+                // Tenta empilhar em pilhas existentes até o limite
+                let remaining = 1;
+                for (let i = 0; i < inventory.length && remaining > 0; i++) {
+                    const it = inventory[i];
+                    if (it.type === type && (it.count || 0) < STACK_LIMIT) {
+                        const space = STACK_LIMIT - (it.count || 0);
+                        const add = Math.min(space, remaining);
+                        it.count = (it.count || 0) + add;
+                        remaining -= add;
+                    }
+                }
+                // Se ainda restar, cria nova pilha
+                if (remaining > 0) {
+                    inventory.push({ type: type, name: name, id: Date.now() + Math.random(), count: remaining });
+                }
+            } else {
+                inventory.push({ type: type, name: name, id: Date.now() + Math.random(), count: 1 });
+            }
             // Feedback visual simples
             const msg = document.getElementById('interaction-msg');
             let msgName = name;
@@ -802,14 +912,14 @@
                 const slot = document.createElement('div');
                 slot.className = 'inv-slot';
                 let iconClass = '';
-                if (item.type === 'food') iconClass = 'icon-food';
-                else if (item.type === 'water') iconClass = 'icon-water';
-                else if (item.type === 'sword') iconClass = 'icon-sword';
-                else if (item.type === 'dirt') iconClass = '';
-                else if (item.type === 'stone') iconClass = '';
-                else if (item.type === 'sand') iconClass = '';
+                if (item.type === 'comida') iconClass = 'icon-comida';
+                else if (item.type === 'agua') iconClass = 'icon-agua';
+                else if (item.type === 'espada') iconClass = 'icon-espada';
+                else if (item.type === 'terra') iconClass = '';
+                else if (item.type === 'pedra') iconClass = '';
+                else if (item.type === 'areia') iconClass = '';
                 // Se for espada, tenta gerar um ícone via canvas/textura
-                if (item.type === 'sword') {
+                if (item.type === 'espada') {
                     const icon = createSwordIconCanvas(80);
                     const dataUrl = icon.toDataURL();
                     slot.innerHTML = `
@@ -820,9 +930,16 @@
                     `;
                 } else {
                     slot.innerHTML = `
-                        <div class="${iconClass}" style="width:30px;height:30px;background:${item.type==='dirt'?'#8B5A2B':item.type==='stone'?'#888':'#EED28A'};border-radius:4px;margin-bottom:5px;"></div>
+                        <div class="${iconClass}" style="width:30px;height:30px;background:${item.type==='terra'?'#8B5A2B':item.type==='pedra'?'#888':'#EED28A'};border-radius:4px;margin-bottom:5px;"></div>
                         <span class="item-count">${item.name}</span>
                     `;
+                }
+                // Badge de contagem (empilhamento)
+                if ((item.count || 0) > 1) {
+                    const badge = document.createElement('div');
+                    badge.style = 'position:absolute;top:6px;right:8px;background:rgba(0,0,0,0.65);color:#fff;padding:2px 6px;border-radius:10px;font-size:12px;pointer-events:none;';
+                    badge.innerText = 'x' + item.count;
+                    slot.appendChild(badge);
                 }
                 slot.onclick = () => useItem(index);
                 grid.appendChild(slot);
@@ -831,15 +948,15 @@
 
         function useItem(index) {
             const item = inventory[index];
-            if (item.type === 'food') {
+            if (item.type === 'comida') {
                 hunger = Math.min(100, hunger + 30);
                 health = Math.min(100, health + 5);
-                inventory.splice(index, 1);
-            } else if (item.type === 'water') {
+                if (item.count && item.count > 1) item.count--; else inventory.splice(index, 1);
+            } else if (item.type === 'agua') {
                 thirst = Math.min(100, thirst + 30);
                 health = Math.min(100, health + 2);
-                inventory.splice(index, 1);
-            } else if (item.type === 'sword') {
+                if (item.count && item.count > 1) item.count--; else inventory.splice(index, 1);
+            } else if (item.type === 'espada') {
                 if (!equippedSword) {
                     equippedSword = true;
                     showSwordInHand();
@@ -849,10 +966,10 @@
                     hideSwordInHand();
                     alert('Espada guardada!');
                 }
-            } else if (item.type === 'dirt' || item.type === 'stone' || item.type === 'sand') {
+            } else if (item.type === 'terra' || item.type === 'pedra' || item.type === 'areia') {
                 // Colocar bloco no mundo
                 placeBlock(item.type);
-                inventory.splice(index, 1);
+                if (item.count && item.count > 1) item.count--; else inventory.splice(index, 1);
             }
             updateHUD();
             renderInventory();
@@ -897,11 +1014,9 @@
                         return;
                     }
                 });
-                // --- CRAFTING SIMPLES ---
-                // Interface
+                // --- CRAFTING ---
                 const craftingRecipes = [
-                    { name: 'Espada', requires: { stone: 2, wood: 1 }, result: { type: 'sword', name: 'Espada' } },
-                    { name: 'Comida', requires: { dirt: 1 }, result: { type: 'food', name: 'Maçã' } }
+                    { name: 'Espada', requires: { pedra: 2, graveto: 1 }, result: { type: 'espada', name: 'Espada' } },
                 ];
                 function openCrafting() {
                     let html = '<h2>Crafting</h2>';
@@ -923,9 +1038,9 @@
                 };
                 window.craftItem = function(idx) {
                     const recipe = craftingRecipes[idx];
-                    // Checa se tem os itens
-                    const counts = {};
-                    inventory.forEach(i=>{counts[i.type]=(counts[i.type]||0)+1;});
+                    // Checa se tem os itens (leva em conta pilhas)
+                        const counts = {};
+                        inventory.forEach(i=>{counts[i.type]=(counts[i.type]||0)+(i.count||1);});
                     let can = true;
                     for (let k in recipe.requires) {
                         if (!counts[k] || counts[k]<recipe.requires[k]) can = false;
@@ -933,13 +1048,24 @@
                     if (!can) { alert('Faltam ingredientes!'); return; }
                     // Remove ingredientes
                     for (let k in recipe.requires) {
-                        let needed = recipe.requires[k];
-                        for (let i=inventory.length-1;i>=0&&needed>0;i--) {
-                            if (inventory[i].type===k) { inventory.splice(i,1); needed--; }
-                        }
+                            let needed = recipe.requires[k];
+                            for (let i=inventory.length-1;i>=0&&needed>0;i--) {
+                                if (inventory[i].type===k) {
+                                    const have = inventory[i].count || 1;
+                                    if (have > needed) {
+                                        // retira parte da pilha
+                                        inventory[i].count = have - needed;
+                                        needed = 0;
+                                    } else {
+                                        // consome a pilha inteira
+                                        needed -= have;
+                                        inventory.splice(i,1);
+                                    }
+                                }
+                            }
                     }
-                    // Adiciona resultado
-                    inventory.push({ type: recipe.result.type, name: recipe.result.name, id: Date.now()+Math.random() });
+                        // Adiciona resultado (usa addToInventory para empilhar corretamente)
+                        if (recipe.result && recipe.result.type) addToInventory(recipe.result.type);
                     renderInventory();
                     alert('Item criado!');
                 };
@@ -999,38 +1125,32 @@
             canvas.height = size;
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0,0,size,size);
-
-            // Centraliza e desenha espada estilizada
+            // Use the same procedural blade texture as the world model to make the icon match.
+            // Create a tall texture and draw a vertical slice into the icon canvas as the blade.
+            const texW = 64, texH = 256;
+            const bladeTexCanvas = createSwordTextureCanvas(texW, texH);
+            // compute blade rectangle in icon
             const cx = size/2;
             const cy = size/2 + 4;
-
-            // Lâmina (um retângulo longo fino)
-            const bladeH = size * 0.58;
+            const bladeH = Math.floor(size * 0.58);
             const bladeW = Math.max(2, Math.floor(size * 0.12));
-            const bladeX = cx - bladeW/2;
-            const bladeY = cy - bladeH/2 - 6;
-            const grad = ctx.createLinearGradient(bladeX, bladeY, bladeX+bladeW, bladeY+bladeH);
-            grad.addColorStop(0, '#f3f6fb'); grad.addColorStop(0.5,'#cfd8e7'); grad.addColorStop(1,'#bfc8dd');
-            ctx.fillStyle = grad;
-            // sombra leve
-            ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
-            ctx.fillRect(bladeX, bladeY, bladeW, bladeH);
-            ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-
-            // Brilho central
-            ctx.fillStyle = 'rgba(255,255,255,0.35)';
-            ctx.fillRect(cx - 2, bladeY, 4, bladeH);
-
-            // Guarda
-            const guardW = bladeW * 2.2;
+            const bladeX = Math.floor(cx - bladeW/2);
+            const bladeY = Math.floor(cy - bladeH/2 - 6);
+            // draw a central vertical slice of the texture scaled to blade rect
+            const sliceX = Math.floor(texW * 0.45);
+            ctx.drawImage(bladeTexCanvas, sliceX, 0, 4, texH, bladeX, bladeY, bladeW, bladeH);
+            // subtle highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.25)';
+            ctx.fillRect(cx - 1, bladeY, 2, bladeH);
+            // Guard
+            const guardW = Math.max(2, Math.floor(bladeW * 2.2));
             const guardH = Math.max(2, Math.floor(size * 0.06));
             ctx.fillStyle = '#d4b24a';
-            ctx.fillRect(cx - guardW/2, bladeY + bladeH*0.6, guardW, guardH);
-
-            // Cabo
+            ctx.fillRect(cx - guardW/2, bladeY + Math.floor(bladeH*0.6), guardW, guardH);
+            // Handle
             const handleH = Math.max(6, Math.floor(size * 0.16));
             ctx.fillStyle = '#7a4a2d';
-            ctx.fillRect(cx - bladeW/2, bladeY + bladeH*0.6 + guardH, bladeW, handleH);
+            ctx.fillRect(cx - Math.floor(bladeW/2), bladeY + Math.floor(bladeH*0.6) + guardH, bladeW, handleH);
 
             return canvas;
         }
