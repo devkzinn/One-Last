@@ -180,6 +180,7 @@
         }
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <script src="crafting.js"></script>
 </head>
 <body>
 
@@ -242,7 +243,8 @@
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
         // --- CICLO DIA/NOITE ---
-        let timeOfDay = 0; // 0 a 1 (0 = manhã, 0.5 = noite, 1 = manhã)
+        // Inicia sempre à noite (0.5 = noite) — o ciclo continua normalmente
+        let timeOfDay = 0.5; // 0 a 1 (0 = manhã, 0.5 = noite, 1 = manhã)
         function updateDayNight(delta) {
             timeOfDay += delta * 0.01; // 1 ciclo = ~100s
             if (timeOfDay > 1) timeOfDay -= 1;
@@ -336,6 +338,8 @@
         dirLight.shadow.camera.left = -100;
         dirLight.shadow.camera.right = 100;
         scene.add(dirLight);
+        // Aplicar aparência inicial imediatamente (começar de noite)
+        updateDayNight(0);
 
         // --- TERRENO ---
         const simplex = new SimplexNoise();
@@ -659,7 +663,7 @@
                 scene.add(mesh);
                 itemsInWorld.push(mesh);
             } else if (type === 'espada') {
-                // Espada não deve aparecer no chão — crafting apenas. Ignora spawn.
+                
                 return;
             } else if (type === 'graveto') {
                 const geom = new THREE.BoxGeometry(0.2, 0.06, 0.6);
@@ -755,9 +759,11 @@
                 if (gameStarted) {
                     startBtn.style.display = 'none';
                     resumeBtn.style.display = '';
+                    if (aboutBtn) aboutBtn.style.display = 'none';
                 } else {
                     startBtn.style.display = '';
                     resumeBtn.style.display = 'none';
+                    if (aboutBtn) aboutBtn.style.display = '';
                 }
             }
         });
@@ -1111,10 +1117,6 @@
                         return;
                     }
                 });
-                // --- CRAFTING ---
-                        const craftingRecipes = [
-                            { name: 'Espada', requires: { pedrinha: 2, graveto: 1 }, result: { type: 'espada', name: 'Espada' } },
-                        ];
                 function openCrafting() {
                     isCraftingOpen = true;
                     try { if (controls && controls.isLocked) controls.unlock(); } catch(e) {}
