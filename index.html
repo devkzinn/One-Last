@@ -225,6 +225,7 @@
         <div id="blocker">
             <div id="instructions" class="menu-panel fade-in-up">
                         <div class="menu-row">
+                        <button id="resume-btn" class="menu-btn" style="display:none">RETOMAR</button>
                         <button id="start-btn" class="menu-btn">NOVO JOGO</button>
                         <button id="options-btn" class="menu-btn">OPÇÕES</button>
                         <button id="tutorial-btn" class="menu-btn">TUTORIAL</button>
@@ -778,7 +779,9 @@
         }
 
         // --- CONTROLES E SISTEMA DE JOGO ---
-        const controls = new PointerLockControls(camera, document.body);
+        // Use the renderer canvas as the pointer-lock element so lock/unlock requests
+        // originate from the visible game canvas and work reliably when resuming.
+        const controls = new PointerLockControls(camera, renderer.domElement);
         // Posiciona o objeto de controle (jogador) acima do terreno no início
         // Posiciona o objeto de controle (jogador) acima do terreno no início usando ponto seguro
         if (typeof spawnPoint !== 'undefined') {
@@ -799,7 +802,39 @@
 
         // Botões do menu (adiciona listeners somente se existirem)
         if (startBtn) startBtn.addEventListener('click', function () { startGame(); });
-        if (resumeBtn) resumeBtn.addEventListener('click', function () { controls.lock(); if (blocker) blocker.style.display = 'none'; });
+        if (resumeBtn) resumeBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            try {
+                if (document.body) { document.body.tabIndex = -1; document.body.focus(); }
+                if (renderer && renderer.domElement) {
+                    renderer.domElement.style.display = '';
+                    renderer.domElement.tabIndex = -1;
+                    renderer.domElement.focus();
+                    // Request pointer lock directly on the canvas; browsers require this to be from a user gesture
+                    if (typeof renderer.domElement.requestPointerLock === 'function') {
+                        renderer.domElement.requestPointerLock();
+                    }
+                }
+            } catch (err) {}
+            // As a fallback, also call controls.lock() which will attempt requestPointerLock on the configured element
+            try { controls.lock(); } catch (err) {}
+        });
+
+        // Listen to raw pointer lock changes to ensure UI and focus update when lock state changes
+        document.addEventListener('pointerlockchange', () => {
+            const locked = document.pointerLockElement === renderer.domElement;
+            if (locked) {
+                if (blocker) blocker.style.display = 'none';
+                if (invContainer) invContainer.style.display = 'none';
+                isInventoryOpen = false;
+                try { renderer.domElement.focus(); } catch (err) {}
+            } else {
+                // If pointer unlocked during gameplay, show blocker/menu
+                if (gameStarted) {
+                    if (blocker) blocker.style.display = 'flex';
+                }
+            }
+        });
         if (tutorialBtn) tutorialBtn.addEventListener('click', function () { openTutorial(); });
         // Novos botões: Sobre e Opções
         const aboutBtn = document.getElementById('about-btn');
