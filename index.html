@@ -25,17 +25,40 @@
         #blocker {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(20,30,40,0.95); /* cor de fundo mais agradável */
+            background: url('imagens/tela_inicial.png') center center / cover no-repeat;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             pointer-events: auto;
             z-index: 999;
-            color: white;
+            color: #e5ddc7;
             text-align: center;
         }
-        #instructions { font-size: 24px; cursor: pointer; }
-        
+        #blocker::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: rgba(10,16,20,0.82);
+            pointer-events: none;
+        }
+        #title-top-right {
+            position: relative;
+            margin-top: 6vh;
+            margin-bottom: 4vh;
+            z-index: 3;
+            font-size: clamp(40px, 6vw, 72px);
+            font-weight: 700;
+            color: #e5ddc7;
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            box-shadow: none;
+            font-family: 'Cinzel', serif;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: center;
+            text-shadow: 0 2px 16px #000, 0 1px 0 #222;
+        }
         /* INVENTÁRIO */
         #inventory-container {
             display: none; /* Escondido por padrão */
@@ -66,8 +89,8 @@
         .inv-slot {
             width: 80px;
             height: 80px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid #444;
+            background: rgba(30,30,30,0.7);
+            border: 1px solid #222;
             border-radius: 5px;
             display: flex;
             flex-direction: column;
@@ -77,11 +100,11 @@
             transition: background 0.2s;
             position: relative;
         }
-        .inv-slot:hover { background: rgba(255,255,255,0.2); border-color: white; }
+        .inv-slot:hover { background: rgba(60,60,60,0.5); border-color: #888; }
         
         /* Ícones simples via CSS para os itens */
-        .icon-comida { width: 30px; height: 30px; background: #e74c3c; border-radius: 4px; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.3); }
-        .icon-agua { width: 30px; height: 30px; background: #3498db; border-radius: 50%; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.3); }
+        .icon-comida { width: 30px; height: 30px; background: #7a2323; border-radius: 4px; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.6); }
+        .icon-agua { width: 30px; height: 30px; background: #1a2a3a; border-radius: 50%; margin-bottom: 5px; box-shadow: 2px 2px 0px rgba(0,0,0,0.6); }
         .icon-espada { width: 30px; height: 30px; margin-bottom: 5px; position: relative; }
         .icon-espada::before {
             content: '';
@@ -89,7 +112,7 @@
             position: absolute;
             left: 13px; top: 3px;
             width: 4px; height: 22px;
-            background: linear-gradient(180deg, #eee 70%, #888 100%);
+            background: linear-gradient(180deg, #444 70%, #222 100%);
             border-radius: 2px;
             box-shadow: 1px 1px 2px #222;
         }
@@ -99,46 +122,47 @@
             position: absolute;
             left: 8px; top: 22px;
             width: 14px; height: 4px;
-            background: #b48a3c;
+            background: #6a5520;
             border-radius: 2px;
             box-shadow: 1px 1px 2px #222;
         }
         
         .item-count { font-size: 12px; color: #ccc; }
-        .close-btn { position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; font-size: 20px; color: #e74c3c; }
-
-        /* Menu inicial estilizado - aparência mais profissional */
-        body { background: linear-gradient(180deg,#1f2933 0%, #182028 100%); }
-        /* Usa a capa como imagem de fundo com overlay levemente escuro. Removido 'fixed' para evitar pixelização e adicionada camada de ruído e suavização. */
-        #blocker {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100vh;
-            display: flex; align-items: center; justify-content: center;
-            background-image: url('imagens/Capa_One_Last.png');
-            background-size: cover; background-position: center center; background-repeat: no-repeat;
-            will-change: transform; transform: translateZ(0);
-            -webkit-font-smoothing: antialiased;
-            image-rendering: auto;
+        .close-btn { position: absolute; top: 10px; right: 15px; cursor: pointer; font-weight: bold; font-size: 20px; color: #a13c3c; }
+        /* Menu inicial estilizado (versão: imagem enviada) */
+        body { background: linear-gradient(180deg,#0b0f11 0%, #07090a 100%); }
+        /* O bloco original duplicado foi removido — usamos definições acima para #blocker e título */
+        #blocker::after { content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: overlay; opacity: 0.06; background-image: repeating-linear-gradient(transparent 0 2px, rgba(0,0,0,0.03) 2px 3px); }
+        #instructions { display:flex; flex-direction:column; align-items:center; gap:14px; position:relative; z-index:2; width:100%; }
+        /* Ajustes para alinhar os botões em coluna centralizada, como na imagem desejada */
+        .menu-panel { background: none; box-shadow: none; border: none; width: 100%; max-width: 420px; padding: 0; display:flex; flex-direction:column; align-items:center; }
+        .menu-panel::before, .menu-panel::after { display:none; }
+        .menu-row {
+            position: fixed;
+            top: 32vh; /* baixa a coluna para ficar visível abaixo do título grande */
+            right: clamp(40px, 8vw, 120px);
+            transform: none;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            align-items: center;
+            justify-content: center;
+            width: min(300px, 38vw);
+            z-index: 1200;
+            pointer-events: auto;
         }
-        /* Dark overlay to improve legibility */
-        #blocker::before { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(6,8,10,0.62), rgba(6,8,10,0.72)); pointer-events: none; }
-        /* Subtle film grain to mask pixelation */
-        #blocker::after { content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: overlay; opacity: 0.08; background-image: repeating-linear-gradient(transparent 0 2px, rgba(0,0,0,0.03) 2px 3px); }
-        #instructions { display:flex; flex-direction:column; align-items:center; gap:14px; position:relative; z-index:2; }
-        .menu-panel { width: 720px; max-width: 88vw; min-height: 220px; background: linear-gradient(180deg, rgba(10,12,14,0.78), rgba(6,8,10,0.6)); border: 1px solid rgba(255,255,255,0.04); border-radius: 14px; padding: 22px 30px; display:flex; flex-direction:column; justify-content:center; align-items:center; box-shadow: 0 14px 40px rgba(0,0,0,0.7), inset 0 0 40px rgba(255,255,255,0.01); backdrop-filter: blur(6px) saturate(120%); }
-        .menu-panel::before { content: ''; position: absolute; width: 100%; height: 100%; left: 0; top: 0; border-radius: 14px; pointer-events: none; background-image: linear-gradient(transparent, rgba(255,255,255,0.02)); }
-        .menu-panel::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 14px; background: radial-gradient(ellipse at center, rgba(255,255,255,0.02), transparent 30%); }
-        .title-main { display:none; }
-        /* Prominent title on the top-left to give a gamer vibe */
-        #title-top-right { font-family: 'Cinzel', serif; letter-spacing: 1px; text-transform: uppercase; box-shadow: 0 8px 18px rgba(0,0,0,0.6); }
-        /* Título no canto superior esquerdo sobre a capa */
-        #title-top-right { position: absolute; top: 18px; left: 22px; z-index: 3; font-size: 26px; font-weight: 700; color: #efece6; background: rgba(0,0,0,0.45); padding: 8px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); font-family: 'Cinzel', serif; letter-spacing: 1px; text-transform: uppercase; }
-        .menu-row { display:flex; gap:18px; align-items:center; justify-content:center; }
-        .menu-btn { padding:14px 28px; font-size:16px; cursor:pointer; background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03)); color:#f3f3f3; border: 1px solid rgba(255,255,255,0.06); border-radius:12px; box-shadow: 0 8px 0 rgba(0,0,0,0.4); transition: transform 0.16s cubic-bezier(.2,.9,.3,1), box-shadow 0.16s, background 0.16s; position:relative; z-index:2; }
-        .menu-btn:hover { transform: translateY(-6px); background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)); box-shadow: 0 18px 34px rgba(0,0,0,0.5), 0 0 14px rgba(70,140,255,0.08); }
-        .menu-btn:active { transform: translateY(-3px); }
-        .menu-btn:focus { outline: none; box-shadow: 0 8px 24px rgba(70,140,255,0.12); }
+
+        /* Mobile fallback: centralizar a coluna em telas estreitas para evitar overflow */
+        @media (max-width: 600px) {
+            .menu-row {
+                position: static;
+                transform: none;
+                margin: 4vh auto 0 auto;
+                width: min(320px, 88vw);
+            }
+        }
+        .menu-btn { padding: 6px 0; font-size: clamp(20px, 4.2vw, 36px); font-family: 'Cinzel', serif; font-weight: 700; background: none; color: #e5ddc7; border: none; width: 320px; max-width: 80vw; text-align: center; letter-spacing: 1px; text-shadow: 0 2px 12px #000, 0 1px 0 #222; cursor: pointer; }
+        .menu-btn:hover { color: #fffbe0; text-shadow: 0 4px 24px #000, 0 1px 0 #222; transform: scale(1.02); }
         .menu-subtext { margin-top:14px; font-size:13px; color:rgba(255,255,255,0.85); }
         /* small accent under the menu */
         .menu-accent { height: 2px; width: 120px; background: linear-gradient(90deg, rgba(70,140,255,0.9), rgba(120,80,220,0.9)); border-radius:2px; margin-top:12px; box-shadow: 0 6px 20px rgba(70,140,255,0.06); }
@@ -199,20 +223,14 @@
 <body>
 
         <div id="blocker">
-            <div id="title-top-right">ONE LAST</div>
             <div id="instructions" class="menu-panel fade-in-up">
-                <div class="title-main">One Last</div>
-                <div class="menu-row" style="margin-top:8px;">
-                    <button id="start-btn" class="menu-btn">Começar</button>
-                    <button id="options-btn" class="menu-btn">Opções</button>
+                        <div class="menu-row">
+                        <button id="start-btn" class="menu-btn">NOVO JOGO</button>
+                        <button id="options-btn" class="menu-btn">OPÇÕES</button>
+                        <button id="tutorial-btn" class="menu-btn">TUTORIAL</button>
+                        <button id="about-btn" class="menu-btn">SOBRE</button>
+                    </div>
                 </div>
-                <div class="menu-row" style="margin-top:12px;">
-                    <button id="tutorial-btn" class="menu-btn">Tutorial</button>
-                    <button id="about-btn" class="menu-btn">Sobre</button>
-                </div>
-                <button id="resume-btn" class="menu-btn" style="display:none;margin-top:14px;">Retomar</button>
-                <div class="menu-subtext">Pressione Começar para iniciar sua jornada.</div>
-            </div>
         </div>
 
     <!-- Barras de vida dos inimigos -->
@@ -281,7 +299,7 @@
         const PATCH_settings = {
             pedraAltitudeThreshold: 8, // altitude acima da qual consideramos "rochosas"
             pedrinhaChance: 0.5, // chance de gerar pedrinhas em uma posição rochosa (reduzida)
-            pedrinhaCountMax: 2, // máximo pedrinhas por ponto (reduzido)
+            pedrinhaCountMax: 2, // máximo pedrinhas por ponto (reduzida)
             areiaOpacity: 0.85,
             terraRoughness: 0.95,
             terraPatchScaleMin: 0.8,
@@ -779,10 +797,10 @@
         // Estado das teclas
         const keyState = {};
 
-        // Botões do menu
-        startBtn.addEventListener('click', function () { startGame(); });
-        resumeBtn.addEventListener('click', function () { controls.lock(); blocker.style.display = 'none'; });
-        tutorialBtn.addEventListener('click', function () { openTutorial(); });
+        // Botões do menu (adiciona listeners somente se existirem)
+        if (startBtn) startBtn.addEventListener('click', function () { startGame(); });
+        if (resumeBtn) resumeBtn.addEventListener('click', function () { controls.lock(); if (blocker) blocker.style.display = 'none'; });
+        if (tutorialBtn) tutorialBtn.addEventListener('click', function () { openTutorial(); });
         // Novos botões: Sobre e Opções
         const aboutBtn = document.getElementById('about-btn');
         const optionsBtn = document.getElementById('options-btn');
@@ -812,12 +830,12 @@
                 invContainer.style.display = 'none';
                 // Se o jogo já tinha começado, mostramos o botão 'Retomar' em vez de 'Começar'
                 if (gameStarted) {
-                    startBtn.style.display = 'none';
-                    resumeBtn.style.display = '';
+                    if (startBtn) startBtn.style.display = 'none';
+                    if (resumeBtn) resumeBtn.style.display = '';
                     if (aboutBtn) aboutBtn.style.display = 'none';
                 } else {
-                    startBtn.style.display = '';
-                    resumeBtn.style.display = 'none';
+                    if (startBtn) startBtn.style.display = '';
+                    if (resumeBtn) resumeBtn.style.display = 'none';
                     if (aboutBtn) aboutBtn.style.display = '';
                 }
             }
@@ -1314,6 +1332,7 @@
 
         // Cria um THREE.CanvasTexture a partir do canvas e reaplica se necessário
         function createSwordTexture(width = 128, height = 512) {
+
             const canvas = createSwordTextureCanvas(width, height);
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = THREE.RepeatWrapping;
@@ -1659,5 +1678,3 @@
     </script>
 </body>
 </html>
-
-
