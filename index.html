@@ -345,6 +345,56 @@
         let axeMesh = null;
         // Itens espalhados na cena (colecionáveis)
         const itemsInWorld = [];
+        // Camera recoil / golpe — aplica um offset temporário removível por frame
+        const cameraRecoil = {
+            strength: 0, // peak magnitude
+            duration: 0, // seconds
+            elapsed: 0, // seconds
+            prevApplied: 0 // value applied last frame (so we can remove it cleanly)
+        };
+
+        function triggerCameraRecoil(strength = 0.08, duration = 0.12) {
+            // Se já existe um recoil, prioriza o mais forte e maior duração
+            cameraRecoil.strength = Math.max(cameraRecoil.strength * Math.max(0, 1 - cameraRecoil.elapsed / (cameraRecoil.duration || 1)), strength);
+            cameraRecoil.duration = Math.max(cameraRecoil.duration - cameraRecoil.elapsed, duration);
+            cameraRecoil.elapsed = 0;
+        }
+        // Estado do mouse e mineração
+        let isMouseDown = false;
+        let miningState = null; // { type: 'terrain'|'block', object?, resource?, pos?, requiredTime, elapsed }
+
+        // Picareta (ferramenta) - equipável
+        let equippedPickaxe = false;
+        let pickaxeMesh = null;
+
+        function showPickaxeInHand() {
+            if (pickaxeMesh) return;
+            const handleGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.9, 8);
+            const handleMat = new THREE.MeshStandardMaterial({ color: 0x7a4a2d });
+            const handle = new THREE.Mesh(handleGeo, handleMat);
+            handle.position.set(0.24, -0.25, -0.6);
+            handle.rotation.x = Math.PI / 2.8;
+
+            const headGeo = new THREE.BoxGeometry(0.14, 0.5, 0.18);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0x9aa6b2, metalness: 0.4, roughness: 0.4 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.set(-0.06, 0.05, -0.2);
+            head.rotation.z = -Math.PI / 6;
+
+            pickaxeMesh = new THREE.Group();
+            pickaxeMesh.add(handle);
+            pickaxeMesh.add(head);
+            pickaxeMesh.position.set(0.38, -0.45, -0.7);
+            pickaxeMesh.rotation.x = Math.PI / 9;
+            pickaxeMesh.rotation.y = Math.PI / 10;
+            camera.add(pickaxeMesh);
+        }
+
+        function hidePickaxeInHand() {
+            if (!pickaxeMesh) return;
+            try { camera.remove(pickaxeMesh); } catch (err) {}
+            pickaxeMesh = null;
+        }
         
         // --- THREE.JS SETUP ---
         const scene = new THREE.Scene();
@@ -797,6 +847,52 @@
                 }
             }
         }
+        // Remover patches discretos de terreno previamente adicionados (terra/areia/pedra)
+        // Isso limpa os blocos "antigos" do chão que eram apenas detalhes visuais.
+        function removeGroundPatches() {
+            const removeTypes = new Set(['terra','areia','pedra']);
+            const toRemove = [];
+            scene.traverse(obj => {
+                if (obj && obj.userData && removeTypes.has(obj.userData.type)) {
+                    toRemove.push(obj);
+                }
+            });
+            toRemove.forEach(obj => {
+                try { scene.remove(obj); } catch (err) {}
+                const bi = blocks.indexOf(obj);
+                if (bi >= 0) blocks.splice(bi, 1);
+            });
+        }
+        // Executa limpeza imediata
+        removeGroundPatches();
+
+        // Spawnar outcrops/patches de pedra visíveis para coleta (adiciona a `blocks` para raycast)
+        function spawnStoneOutcrops(count = 48) {
+            for (let i = 0; i < count; i++) {
+                const x = (Math.random() - 0.5) * (WORLD_WIDTH * 0.9);
+                const z = (Math.random() - 0.5) * (WORLD_DEPTH * 0.9);
+                const terrainY = (typeof sampleHeight === 'function') ? sampleHeight(x, z) : getNoiseHeight(x, z);
+                // evita spawn submerso ou muito baixo
+                if (terrainY <= WATER_LEVEL + 0.5) continue;
+                // prefere altitudes medianas/altas para pedras
+                if (terrainY < PATCH_settings.pedraAltitudeThreshold - 4 && Math.random() < 0.65) continue;
+
+                const scale = 0.7 + Math.random() * 1.8;
+                // Geometria simples tipo 'pedra' (dodecahedron para aspecto irregular)
+                const geom = new THREE.DodecahedronGeometry(0.6 * scale, 0);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x7f7f7f, roughness: 0.95 });
+                const rock = new THREE.Mesh(geom, mat);
+                rock.position.set(x + (Math.random() - 0.5) * 0.4, terrainY + 0.28 * scale, z + (Math.random() - 0.5) * 0.4);
+                rock.rotation.set(Math.random() * 0.6, Math.random() * Math.PI, Math.random() * 0.6);
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                rock.userData = { type: 'pedra' };
+                scene.add(rock);
+                blocks.push(rock);
+            }
+        }
+        // Cria pedras no mapa
+        spawnStoneOutcrops(48);
 
         // --- CONTROLES E SISTEMA DE JOGO ---
         // Use the renderer canvas as the pointer-lock element so lock/unlock requests
@@ -976,7 +1072,7 @@
             div.style = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:24px;z-index:1000;border-radius:10px;max-width:500px;';
             div.innerHTML = `
                 <h2 style="margin-top:0;">Sobre</h2>
-                <p>One Last Pré Alpha Versão: -5.1</p>
+                <p>One Last Pré Alpha Versão: 1.0</p>
                 <p>Criador: Kzinn</p>
                 <div style="text-align:right;margin-top:12px;"><button id="close-about" style="padding:8px 12px;">Fechar</button></div>
             `;
@@ -1097,9 +1193,8 @@
             }
 
             if (hitAnything) {
-                const orig = camera.rotation.x;
-                camera.rotation.x -= 0.08;
-                setTimeout(() => { camera.rotation.x = orig; }, 100);
+                // Aplicar recoil de câmera de forma segura (não empilha permanentemente)
+                triggerCameraRecoil(0.08, 0.12);
             }
         });
 
@@ -1127,6 +1222,7 @@
         function addToInventory(type) {
             const nameMap = { comida: 'Maçã', agua: 'Água', espada: 'Espada', terra: 'Terra', pedra: 'Pedra', areia: 'Areia', graveto: 'Graveto', pedrinha: 'Pedrinha' };
             nameMap['machado'] = 'Machado';
+            nameMap['picareta'] = 'Picareta';
             const name = nameMap[type] || type;
             const isStackable = STACKABLE_TYPES.has(type);
 
@@ -1178,6 +1274,7 @@
                 else if (item.type === 'pedra') iconClass = '';
                 else if (item.type === 'pedrinha') iconClass = '';
                 else if (item.type === 'areia') iconClass = '';
+                else if (item.type === 'picareta') iconClass = '';
                 // Se for espada, tenta gerar um ícone via canvas/textura
                 if (item.type === 'espada') {
                     const icon = createSwordIconCanvas(80);
@@ -1189,7 +1286,7 @@
                         <span class="item-count">${item.name}</span>
                     `;
                 } else {
-                    const bgColor = item.type==='terra' ? '#8B5A2B' : item.type==='pedra' || item.type==='pedrinha' ? '#888' : '#EED28A';
+                    const bgColor = item.type==='terra' ? '#8B5A2B' : item.type==='pedra' || item.type==='pedrinha' ? '#888' : item.type==='areia' ? '#EED28A' : item.type==='picareta' ? '#9aa6b2' : '#444';
                     slot.innerHTML = `
                         <div class="${iconClass}" style="width:30px;height:30px;background:${bgColor};border-radius:4px;margin-bottom:5px;"></div>
                         <span class="item-count">${item.name}</span>
@@ -1251,6 +1348,19 @@
                     hideAxeInHand();
                     alert('Machado guardado!');
                 }
+            } else if (item.type === 'picareta') {
+                if (!equippedPickaxe) {
+                    equippedPickaxe = true;
+                    // Desequipa outras ferramentas
+                    if (equippedAxe) { equippedAxe = false; hideAxeInHand(); }
+                    if (equippedSword) { equippedSword = false; hideSwordInHand(); }
+                    showPickaxeInHand();
+                    alert('Picareta equipada! Use para quebrar pedras.');
+                } else {
+                    equippedPickaxe = false;
+                    hidePickaxeInHand();
+                    alert('Picareta guardada!');
+                }
             } else if (item.type === 'terra' || item.type === 'pedra' || item.type === 'areia') {
                 // Colocar bloco no mundo
                 placeBlock(item.type);
@@ -1283,21 +1393,90 @@
                     scene.add(mesh);
                     blocks.push(mesh);
                 }
-                // Mineração de bloco
+                // Mineração de bloco e escavação do terreno por bioma
+                // Determina o tipo de recurso no ponto (terra/areia/pedra/pedrinha) segundo altura/bioma
+                function determineGroundTypeAt(x, z) {
+                    const h = (typeof sampleHeight === 'function') ? sampleHeight(x, z) : getNoiseHeight(x, z);
+                    if (h <= WATER_LEVEL) return null; // submerso - não escavável
+                    // perto da água -> areia
+                    if (isNearWater(x, z) && h <= WATER_LEVEL + 2.5) return 'areia';
+                    // areas baixas -> terra
+                    if (h < 6) return 'terra';
+                    // zonas médias -> terra com chance de pedrinha
+                    if (h < 14) {
+                        if (h > PATCH_settings.pedraAltitudeThreshold && Math.random() < PATCH_settings.pedrinhaChance) return 'pedrinha';
+                        return 'terra';
+                    }
+                    // altitudes altas -> pedra ou pedrinha
+                    if (h >= 14) {
+                        if (Math.random() < PATCH_settings.pedrinhaChance) return 'pedrinha';
+                        return 'pedra';
+                    }
+                    return 'terra';
+                }
+
+                // Nova lógica de mineração: suporta hold-to-break e ferramentas
                 window.addEventListener('mousedown', (e) => {
                     if (isInventoryOpen || !controls.isLocked) return;
-                    // Raycast para blocos
+                    if (e.button !== 0) return; // apenas botão esquerdo
+                    isMouseDown = true;
+
                     const raycaster = new THREE.Raycaster();
                     raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+
+                    // Prioriza blocos/rochas
                     const intersects = raycaster.intersectObjects(blocks);
                     if (intersects.length > 0) {
                         const block = intersects[0].object;
-                        addToInventory(block.userData.type);
-                        scene.remove(block);
-                        const idx = blocks.indexOf(block);
-                        if (idx >= 0) blocks.splice(idx,1);
+                        const t = block.userData && block.userData.type;
+                        if (t === 'pedra') {
+                            // pedras só com picareta
+                            if (!equippedPickaxe) {
+                                const msg = document.getElementById('interaction-msg');
+                                msg.innerText = 'Precisa de uma picareta para quebrar pedras';
+                                msg.style.display = 'block';
+                                setTimeout(() => { if (!isInventoryOpen) msg.style.display = 'none'; msg.innerText = "Pressione 'E' para pegar"; }, 1500);
+                                miningState = null;
+                                return;
+                            }
+                            // iniciar mineração do bloco
+                            miningState = { type: 'block', object: block, requiredTime: 1.2, elapsed: 0 };
+                            // se equipadoPickaxe, reduz tempo
+                            if (equippedPickaxe) miningState.requiredTime *= 0.6;
+                            return;
+                        } else {
+                            // blocos não-pedra quebram rápido (1 hit)
+                            addToInventory(t);
+                            scene.remove(block);
+                            const idx = blocks.indexOf(block);
+                            if (idx >= 0) blocks.splice(idx,1);
+                            return;
+                        }
+                    }
+
+                    // Caso não tenha bloco, tenta escavar terreno (terra/areia/pedrinha)
+                    const terrainHit = raycaster.intersectObject(terrain, true);
+                    if (terrainHit.length > 0) {
+                        const pt = terrainHit[0].point;
+                        const playerPos = controls.getObject().position;
+                        const dist = playerPos.distanceTo(new THREE.Vector3(pt.x, playerPos.y, pt.z));
+                        const REACH = 4.0;
+                        if (dist > REACH) { miningState = null; return; }
+
+                        const resource = determineGroundTypeAt(pt.x, pt.z);
+                        if (!resource) { miningState = null; return; }
+
+                        // Set required time depending on resource (terra/areia mais rápidos)
+                        let req = (resource === 'terra') ? 0.7 : (resource === 'areia' ? 0.9 : 0.6);
+                        miningState = { type: 'terrain', pos: pt.clone(), resource: resource, requiredTime: req, elapsed: 0, baseY: pt.y };
                         return;
                     }
+                });
+
+                window.addEventListener('mouseup', (e) => {
+                    if (e.button !== 0) return;
+                    isMouseDown = false;
+                    miningState = null;
                 });
                 function openCrafting() {
                     isCraftingOpen = true;
@@ -1754,6 +1933,81 @@
                     velocity.y = 0;
                     pos.y = terrainH + PLAYER_HEIGHT;
                     canJump = true;
+                }
+            }
+
+            // Aplica recoil da câmera (remove o offset anterior, aplica o novo)
+            // Faz isso aqui, após as atualizações de câmera/controles, para não conflitar.
+            if (cameraRecoil.prevApplied) {
+                try { camera.rotation.x -= cameraRecoil.prevApplied; } catch (err) { cameraRecoil.prevApplied = 0; }
+            }
+            if (cameraRecoil.strength > 0 && cameraRecoil.elapsed <= cameraRecoil.duration) {
+                cameraRecoil.elapsed += delta;
+                const t = Math.min(1, cameraRecoil.elapsed / cameraRecoil.duration);
+                // ease-out (quadratic)
+                const ease = 1 - (1 - t) * (1 - t);
+                // applied goes from -strength at t=0 to 0 at t=1
+                const applied = -cameraRecoil.strength * ease;
+                try { camera.rotation.x += applied; cameraRecoil.prevApplied = applied; } catch (err) { cameraRecoil.prevApplied = 0; }
+                if (t >= 1) {
+                    cameraRecoil.strength = 0;
+                    cameraRecoil.duration = 0;
+                    cameraRecoil.elapsed = 0;
+                    cameraRecoil.prevApplied = 0;
+                }
+            } else {
+                cameraRecoil.prevApplied = 0;
+            }
+
+            // Atualiza progresso de mineração quando o botão estiver segurado
+            if (miningState && isMouseDown) {
+                // Verifica alcance
+                const playerPos = controls.getObject().position;
+                if (miningState.type === 'terrain') {
+                    const dx = playerPos.x - miningState.pos.x;
+                    const dz = playerPos.z - miningState.pos.z;
+                    if (Math.sqrt(dx*dx + dz*dz) > 4.0) { miningState = null; }
+                } else if (miningState.type === 'block') {
+                    const obj = miningState.object;
+                    if (!obj || !obj.position) { miningState = null; }
+                    else {
+                        const dx = playerPos.x - obj.position.x;
+                        const dz = playerPos.z - obj.position.z;
+                        if (Math.sqrt(dx*dx + dz*dz) > 4.0) { miningState = null; }
+                    }
+                }
+
+                if (miningState) {
+                    // incrementa progresso
+                    miningState.elapsed += delta;
+                    // pequeno feedback visual por hit
+                    triggerCameraRecoil(0.02, 0.06);
+                    if (miningState.elapsed >= miningState.requiredTime) {
+                        // completar mineração
+                        if (miningState.type === 'block') {
+                            const block = miningState.object;
+                            if (block) {
+                                addToInventory(block.userData.type);
+                                try { scene.remove(block); } catch (err) {}
+                                const bi = blocks.indexOf(block);
+                                if (bi >= 0) blocks.splice(bi, 1);
+                            }
+                        } else if (miningState.type === 'terrain') {
+                            addToInventory(miningState.resource);
+                            // cria buraco visual
+                            const pt = miningState.pos;
+                            const holeSize = Math.max(0.9, blockSize * 0.9);
+                            const holeGeo = new THREE.CircleGeometry(holeSize, 18);
+                            const holeMat = new THREE.MeshStandardMaterial({ color: 0x0b0b0b, roughness: 1, metalness: 0 });
+                            const hole = new THREE.Mesh(holeGeo, holeMat);
+                            hole.rotateX(-Math.PI / 2);
+                            hole.position.set(pt.x, miningState.baseY - 0.12, pt.z);
+                            hole.userData = { type: 'hole', createdFor: miningState.resource };
+                            scene.add(hole);
+                            setTimeout(() => { try { scene.remove(hole); } catch (err) {} }, 12000);
+                        }
+                        miningState = null;
+                    }
                 }
             }
 
