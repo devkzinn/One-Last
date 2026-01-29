@@ -1936,19 +1936,19 @@
                 }
             }
 
-            // Aplica recoil da câmera (remove o offset anterior, aplica o novo)
+            // Aplica recoil da câmera movendo-a localmente no eixo Z (sem alterar rotações)
             // Faz isso aqui, após as atualizações de câmera/controles, para não conflitar.
             if (cameraRecoil.prevApplied) {
-                try { camera.rotation.x -= cameraRecoil.prevApplied; } catch (err) { cameraRecoil.prevApplied = 0; }
+                try { camera.translateZ(-cameraRecoil.prevApplied); } catch (err) { cameraRecoil.prevApplied = 0; }
             }
             if (cameraRecoil.strength > 0 && cameraRecoil.elapsed <= cameraRecoil.duration) {
                 cameraRecoil.elapsed += delta;
                 const t = Math.min(1, cameraRecoil.elapsed / cameraRecoil.duration);
                 // ease-out (quadratic)
                 const ease = 1 - (1 - t) * (1 - t);
-                // applied goes from -strength at t=0 to 0 at t=1
+                // applied goes from -strength at t=0 to 0 at t=1 (negative moves camera forward)
                 const applied = -cameraRecoil.strength * ease;
-                try { camera.rotation.x += applied; cameraRecoil.prevApplied = applied; } catch (err) { cameraRecoil.prevApplied = 0; }
+                try { camera.translateZ(applied); cameraRecoil.prevApplied = applied; } catch (err) { cameraRecoil.prevApplied = 0; }
                 if (t >= 1) {
                     cameraRecoil.strength = 0;
                     cameraRecoil.duration = 0;
